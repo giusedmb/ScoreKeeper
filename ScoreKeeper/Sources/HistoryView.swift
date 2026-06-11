@@ -57,7 +57,7 @@ struct HistoryGameRow: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Partita")
+                    Text(game.gameTypeName ?? "Partita")
                         .font(.headline)
                         .foregroundColor(.primary)
                     

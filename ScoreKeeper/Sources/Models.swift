@@ -34,13 +34,15 @@ public struct Game: Codable, Identifiable, Hashable {
     public var participantIds: [UUID] // Player.id
     public var rounds: [Round]
     public var isCompleted: Bool
+    public var gameTypeName: String?
 
-    public init(id: UUID = UUID(), date: Date = Date(), participantIds: [UUID] = [], rounds: [Round] = [], isCompleted: Bool = false) {
+    public init(id: UUID = UUID(), date: Date = Date(), participantIds: [UUID] = [], rounds: [Round] = [], isCompleted: Bool = false, gameTypeName: String? = nil) {
         self.id = id
         self.date = date
         self.participantIds = participantIds
         self.rounds = rounds
         self.isCompleted = isCompleted
+        self.gameTypeName = gameTypeName
     }
 
     public func totalScore(for participantId: UUID) -> Int {
@@ -183,6 +185,176 @@ public struct CiccopaoloGame: Codable, Identifiable, Hashable {
         self.players = players
         self.rounds = rounds
         self.completedGamesRounds = completedGamesRounds
+        self.isActive = isActive
+    }
+}
+
+// MARK: - Scopa Game Models
+public struct ScopaPlayer: Codable, Identifiable, Hashable {
+    public let id: UUID // Original Player.id
+    public var name: String
+    public var currentScore: Int // Accumulated score
+    
+    public init(id: UUID, name: String, currentScore: Int = 0) {
+        self.id = id
+        self.name = name
+        self.currentScore = currentScore
+    }
+}
+
+public struct ScopaRound: Codable, Identifiable, Hashable {
+    public let id: UUID
+    public var roundNumber: Int
+    
+    // Scopa classic points
+    public var primieraWinnerId: UUID?
+    public var settebelloWinnerId: UUID?
+    public var carteWinnerId: UUID?
+    public var denariWinnerId: UUID?
+    
+    // Scope made by each player
+    public var scopeScores: [UUID: Int] // Player.id -> count
+    
+    // Napoli / Napola extra points (if played)
+    public var napolaScores: [UUID: Int] // Player.id -> Napola points (usually 3 to 10 points)
+    
+    public init(
+        id: UUID = UUID(),
+        roundNumber: Int,
+        primieraWinnerId: UUID? = nil,
+        settebelloWinnerId: UUID? = nil,
+        carteWinnerId: UUID? = nil,
+        denariWinnerId: UUID? = nil,
+        scopeScores: [UUID: Int] = [:],
+        napolaScores: [UUID: Int] = [:]
+    ) {
+        self.id = id
+        self.roundNumber = roundNumber
+        self.primieraWinnerId = primieraWinnerId
+        self.settebelloWinnerId = settebelloWinnerId
+        self.carteWinnerId = carteWinnerId
+        self.denariWinnerId = denariWinnerId
+        self.scopeScores = scopeScores
+        self.napolaScores = napolaScores
+    }
+    
+    public func pointsForPlayer(id: UUID) -> Int {
+        var total = 0
+        if primieraWinnerId == id { total += 1 }
+        if settebelloWinnerId == id { total += 1 }
+        if carteWinnerId == id { total += 1 }
+        if denariWinnerId == id { total += 1 }
+        total += scopeScores[id] ?? 0
+        total += napolaScores[id] ?? 0
+        return total
+    }
+}
+
+public struct ScopaGame: Codable, Identifiable, Hashable {
+    public let id: UUID
+    public var date: Date
+    public var targetScore: Int // e.g. 11 or 21
+    public var players: [ScopaPlayer] // Always 2 players
+    public var rounds: [ScopaRound]
+    public var isActive: Bool
+    
+    public var isFinished: Bool {
+        players.contains(where: { $0.currentScore >= targetScore })
+    }
+    
+    public var winner: ScopaPlayer? {
+        guard isFinished else { return nil }
+        let s0 = players[0].currentScore
+        let s1 = players[1].currentScore
+        if s0 >= targetScore && s0 > s1 {
+            return players[0]
+        } else if s1 >= targetScore && s1 > s0 {
+            return players[1]
+        }
+        return nil
+    }
+    
+    public init(
+        id: UUID = UUID(),
+        date: Date = Date(),
+        targetScore: Int = 11,
+        players: [ScopaPlayer] = [],
+        rounds: [ScopaRound] = [],
+        isActive: Bool = false
+    ) {
+        self.id = id
+        self.date = date
+        self.targetScore = targetScore
+        self.players = players
+        self.rounds = rounds
+        self.isActive = isActive
+    }
+}
+
+// MARK: - Briscola Game Models
+public struct BriscolaPlayer: Codable, Identifiable, Hashable {
+    public let id: UUID // Original Player.id
+    public var name: String
+    public var gameWins: Int // "Segni" won so far
+    
+    public init(id: UUID, name: String, gameWins: Int = 0) {
+        self.id = id
+        self.name = name
+        self.gameWins = gameWins
+    }
+}
+
+public struct BriscolaRound: Codable, Identifiable, Hashable {
+    public let id: UUID
+    public var roundNumber: Int
+    public var cardScores: [UUID: Int] // Player.id -> card points in this hand (0...120)
+    
+    public var winnerId: UUID? {
+        let scores = Array(cardScores.values)
+        guard scores.count == 2 else { return nil }
+        let maxEntry = cardScores.max(by: { $0.value < $1.value })
+        if let maxEntry = maxEntry, maxEntry.value > 60 {
+            return maxEntry.key
+        }
+        return nil
+    }
+    
+    public init(id: UUID = UUID(), roundNumber: Int, cardScores: [UUID: Int] = [:]) {
+        self.id = id
+        self.roundNumber = roundNumber
+        self.cardScores = cardScores
+    }
+}
+
+public struct BriscolaGame: Codable, Identifiable, Hashable {
+    public let id: UUID
+    public var date: Date
+    public var targetWins: Int // e.g. 1, 2 (meglio di 3), 3 (meglio di 5)
+    public var players: [BriscolaPlayer] // Always 2 players
+    public var rounds: [BriscolaRound] // Current active set of rounds/hands
+    public var isActive: Bool
+    
+    public var isFinished: Bool {
+        players.contains(where: { $0.gameWins >= targetWins })
+    }
+    
+    public var winner: BriscolaPlayer? {
+        players.first(where: { $0.gameWins >= targetWins })
+    }
+    
+    public init(
+        id: UUID = UUID(),
+        date: Date = Date(),
+        targetWins: Int = 2,
+        players: [BriscolaPlayer] = [],
+        rounds: [BriscolaRound] = [],
+        isActive: Bool = false
+    ) {
+        self.id = id
+        self.date = date
+        self.targetWins = targetWins
+        self.players = players
+        self.rounds = rounds
         self.isActive = isActive
     }
 }

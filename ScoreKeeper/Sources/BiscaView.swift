@@ -150,8 +150,7 @@ struct BiscaView: View {
             Section {
                 Button(action: {
                     let selected = store.players.filter { selectedPlayerIds.contains($0.id) }
-                    let names = selected.map { $0.name }
-                    store.startBiscaGame(maxLives: maxLives, playerNames: names)
+                    store.startBiscaGame(maxLives: maxLives, players: selected)
                     triggerHaptic(.notification(.success))
                 }) {
                     Text("Inizia Bisca")

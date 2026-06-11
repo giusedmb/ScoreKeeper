@@ -3,37 +3,17 @@ import SwiftUI
 struct ContentView: View {
     @Environment(GameStore.self) private var store
     @State private var selectedTab = 0
-    @State private var showingNewGame = false
-    @State private var showingAddPlayer = false
     
     var body: some View {
         TabView(selection: $selectedTab) {
             NavigationStack {
-                GameView(showingNewGame: $showingNewGame, showingAddPlayer: $showingAddPlayer)
+                GamesListView()
                     .background(Color.appBackground)
             }
             .tabItem {
-                Label("Partita", systemImage: "play.circle.fill")
+                Label("Giochi", systemImage: "gamecontroller.fill")
             }
             .tag(0)
-            
-            NavigationStack {
-                BiscaView()
-                    .background(Color.appBackground)
-            }
-            .tabItem {
-                Label("Bisca", systemImage: "suit.spade.fill")
-            }
-            .tag(1)
-            
-            NavigationStack {
-                CiccopaoloView()
-                    .background(Color.appBackground)
-            }
-            .tabItem {
-                Label("Ciccopaolo", systemImage: "suit.club.fill")
-            }
-            .tag(2)
             
             NavigationStack {
                 HistoryView()
@@ -42,15 +22,9 @@ struct ContentView: View {
             .tabItem {
                 Label("Cronologia", systemImage: "clock.fill")
             }
-            .tag(3)
+            .tag(1)
         }
         .tint(.appAccent)
-        .sheet(isPresented: $showingNewGame) {
-            NewGameView()
-        }
-        .sheet(isPresented: $showingAddPlayer) {
-            QuickAddPlayerView()
-        }
     }
 }
 

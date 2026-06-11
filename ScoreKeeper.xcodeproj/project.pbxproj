@@ -10,6 +10,8 @@
 		143DE9D7778191E0D4F117EF /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB93FF285629333EC929CF5D /* HistoryView.swift */; };
 		225D3B17D5889D4450A9B6DD /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 75A2B7AC54B0B16E4DDFFBD8 /* Assets.xcassets */; };
 		28E462DF12FACD285B83171C /* GameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 388E88F25B50D68825FFCEDA /* GameView.swift */; };
+		34CDC69AE9747A2F51A97C60 /* BriscolaView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE61AD43BC50E7EA5FE608BD /* BriscolaView.swift */; };
+		3F96EEA8D2B5478D90BB4447 /* ScopaView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD5468845EC9C6D8E349CA99 /* ScopaView.swift */; };
 		49C8F6B343AC9861442650A0 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E0E25D71E2C0F51D16B711F /* Theme.swift */; };
 		70BA08A692EDEB767A64F973 /* NewGameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCA3B75B9A79333B64A882D0 /* NewGameView.swift */; };
 		875F5AD9ABA2F34CC3571C80 /* CiccopaoloView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32198C5BC380754C98BAB5E4 /* CiccopaoloView.swift */; };
@@ -18,6 +20,7 @@
 		B0D846743D34FAADC5463230 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FE9ACC30533B2352D76674B /* Models.swift */; };
 		BFFB195BB727662674DB9920 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D3C64DE3228948BDBD6580 /* ContentView.swift */; };
 		DA44051542D988B208A265AD /* ScoreKeeperApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C243182BE15725E62A6A2EBE /* ScoreKeeperApp.swift */; };
+		DD433DC8F1C26BB9ADF665D1 /* GamesListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EAD6B52D071E263EAB2DE8F /* GamesListView.swift */; };
 		E9F0073FCF622D31E1743A5C /* Storage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 587068E77664AECA90118FBB /* Storage.swift */; };
 /* End PBXBuildFile section */
 
@@ -26,6 +29,7 @@
 		32198C5BC380754C98BAB5E4 /* CiccopaoloView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CiccopaoloView.swift; sourceTree = "<group>"; };
 		35FEFF2B81BF8B4B9897815E /* BiscaView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiscaView.swift; sourceTree = "<group>"; };
 		388E88F25B50D68825FFCEDA /* GameView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameView.swift; sourceTree = "<group>"; };
+		3EAD6B52D071E263EAB2DE8F /* GamesListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamesListView.swift; sourceTree = "<group>"; };
 		4E0E25D71E2C0F51D16B711F /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		587068E77664AECA90118FBB /* Storage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Storage.swift; sourceTree = "<group>"; };
 		75A2B7AC54B0B16E4DDFFBD8 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -34,7 +38,9 @@
 		C0D3C64DE3228948BDBD6580 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		C243182BE15725E62A6A2EBE /* ScoreKeeperApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreKeeperApp.swift; sourceTree = "<group>"; };
 		EC83CAFC1ACA1BD7DF36A689 /* PlayersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayersView.swift; sourceTree = "<group>"; };
+		EE61AD43BC50E7EA5FE608BD /* BriscolaView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BriscolaView.swift; sourceTree = "<group>"; };
 		FCA3B75B9A79333B64A882D0 /* NewGameView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewGameView.swift; sourceTree = "<group>"; };
+		FD5468845EC9C6D8E349CA99 /* ScopaView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScopaView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -68,13 +74,16 @@
 			isa = PBXGroup;
 			children = (
 				35FEFF2B81BF8B4B9897815E /* BiscaView.swift */,
+				EE61AD43BC50E7EA5FE608BD /* BriscolaView.swift */,
 				32198C5BC380754C98BAB5E4 /* CiccopaoloView.swift */,
 				C0D3C64DE3228948BDBD6580 /* ContentView.swift */,
+				3EAD6B52D071E263EAB2DE8F /* GamesListView.swift */,
 				388E88F25B50D68825FFCEDA /* GameView.swift */,
 				BB93FF285629333EC929CF5D /* HistoryView.swift */,
 				0FE9ACC30533B2352D76674B /* Models.swift */,
 				FCA3B75B9A79333B64A882D0 /* NewGameView.swift */,
 				EC83CAFC1ACA1BD7DF36A689 /* PlayersView.swift */,
+				FD5468845EC9C6D8E349CA99 /* ScopaView.swift */,
 				C243182BE15725E62A6A2EBE /* ScoreKeeperApp.swift */,
 				587068E77664AECA90118FBB /* Storage.swift */,
 				4E0E25D71E2C0F51D16B711F /* Theme.swift */,
@@ -149,13 +158,16 @@
 			buildActionMask = 2147483647;
 			files = (
 				877564F70DB381A8B2FD7700 /* BiscaView.swift in Sources */,
+				34CDC69AE9747A2F51A97C60 /* BriscolaView.swift in Sources */,
 				875F5AD9ABA2F34CC3571C80 /* CiccopaoloView.swift in Sources */,
 				BFFB195BB727662674DB9920 /* ContentView.swift in Sources */,
 				28E462DF12FACD285B83171C /* GameView.swift in Sources */,
+				DD433DC8F1C26BB9ADF665D1 /* GamesListView.swift in Sources */,
 				143DE9D7778191E0D4F117EF /* HistoryView.swift in Sources */,
 				B0D846743D34FAADC5463230 /* Models.swift in Sources */,
 				70BA08A692EDEB767A64F973 /* NewGameView.swift in Sources */,
 				8A3F7BE515EA42BE78A8216C /* PlayersView.swift in Sources */,
+				3F96EEA8D2B5478D90BB4447 /* ScopaView.swift in Sources */,
 				DA44051542D988B208A265AD /* ScoreKeeperApp.swift in Sources */,
 				E9F0073FCF622D31E1743A5C /* Storage.swift in Sources */,
 				49C8F6B343AC9861442650A0 /* Theme.swift in Sources */,

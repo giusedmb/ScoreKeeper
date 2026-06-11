@@ -1,40 +1,40 @@
 import SwiftUI
 
-enum CiccopaoloCelebrationState: Equatable {
+enum ScopaCelebrationState: Equatable {
     case none
-    case gameWon(winnerName: String, scores: [(name: String, score: Int)], wins: [(name: String, wins: Int)], isMatchFinished: Bool)
+    case gameWon(winnerName: String, scores: [(name: String, score: Int)])
     
-    static func == (lhs: CiccopaoloCelebrationState, rhs: CiccopaoloCelebrationState) -> Bool {
+    static func == (lhs: ScopaCelebrationState, rhs: ScopaCelebrationState) -> Bool {
         switch (lhs, rhs) {
         case (.none, .none):
             return true
-        case (.gameWon(let name1, _, _, let finished1), .gameWon(let name2, _, _, let finished2)):
-            return name1 == name2 && finished1 == finished2
+        case (.gameWon(let name1, _), .gameWon(let name2, _)):
+            return name1 == name2
         default:
             return false
         }
     }
 }
 
-struct CiccopaoloView: View {
+struct ScopaView: View {
     @Environment(GameStore.self) private var store
+    @Environment(\.dismiss) private var viewDismiss
     
     // Setup state
     @State private var selectedPlayerIds = Set<UUID>()
-    @State private var targetScore = 21
-    @State private var matchFormat: CiccopaoloMatchFormat = .bottaSecca
+    @State private var targetScore = 11
     @State private var quickPlayerName = ""
     
     // Gameplay state
     @State private var showingAddRoundSheet = false
     @State private var showingResetAlert = false
     @State private var showingExitAlert = false
-    @State private var activeCelebration: CiccopaoloCelebrationState = .none
+    @State private var activeCelebration: ScopaCelebrationState = .none
     
     var body: some View {
         ZStack {
             Group {
-                if let game = store.ciccopaoloGame, game.isActive {
+                if let game = store.scopaGame, game.isActive {
                     activeGameView(game)
                 } else {
                     setupGameView
@@ -43,90 +43,43 @@ struct CiccopaoloView: View {
             .blur(radius: activeCelebration != .none ? 8 : 0)
             
             // Celebration overlay
-            if case .gameWon(let winnerName, let scores, let wins, let isMatchFinished) = activeCelebration {
-                CiccopaoloCelebrationOverlay(
+            if case .gameWon(let winnerName, let scores) = activeCelebration {
+                ScopaCelebrationOverlay(
                     winnerName: winnerName,
-                    scores: scores,
-                    wins: wins,
-                    isMatchFinished: isMatchFinished
+                    scores: scores
                 ) {
                     withAnimation(.easeOut(duration: 0.3)) {
                         activeCelebration = .none
                     }
-                    if isMatchFinished {
-                        store.endCiccopaoloGame()
-                    }
+                    store.endScopaGame()
                 }
                 .transition(.opacity)
                 .zIndex(100)
             }
         }
         .background(Color.appBackground)
-        .navigationTitle("Ciccopaolo")
+        .navigationTitle("Scopa")
         .sheet(isPresented: $showingAddRoundSheet) {
-            if let game = store.ciccopaoloGame {
-                CiccopaoloAddRoundSheet(game: game) { primiera, settebello, carte, mazzo, scope, extra in
-                    // Call save round
-                    store.saveCiccopaoloRound(
+            if let game = store.scopaGame {
+                ScopaAddRoundSheet(game: game) { primiera, settebello, carte, denari, scope, napola in
+                    store.saveScopaRound(
                         primieraWinnerId: primiera,
                         settebelloWinnerId: settebello,
                         carteWinnerId: carte,
-                        mazzoWinnerId: mazzo,
+                        denariWinnerId: denari,
                         scopeScores: scope,
-                        extraScores: extra
+                        napolaScores: napola
                     )
                     
-                    // Immediately check if game/match was won, to show celebration
-                    if let updatedGame = store.ciccopaoloGame {
-                        // Check if a player reached required wins
-                        let requiredWins = updatedGame.matchFormat == .bottaSecca ? 1 : 2
-                        if let matchWinner = updatedGame.matchWinner {
-                            // Match finished!
-                            let pWins = updatedGame.players.map { ($0.name, $0.gameWins) }
-                            
-                            // To show final game scores, we need the scores of the last completed game.
-                            // We can fetch from completedGamesRounds last element
-                            var finalScores: [(name: String, score: Int)] = []
-                            if let lastRounds = updatedGame.completedGamesRounds.last {
-                                for player in updatedGame.players {
-                                    let score = lastRounds.reduce(0) { $0 + $1.pointsForPlayer(id: player.id) }
-                                    finalScores.append((player.name, score))
-                                }
-                            } else {
-                                finalScores = updatedGame.players.map { ($0.name, 0) }
-                            }
-                            
+                    // Immediately check if game was won, to show celebration
+                    if let updatedGame = store.scopaGame {
+                        if updatedGame.isFinished, let winner = updatedGame.winner {
+                            let finalScores = updatedGame.players.map { ($0.name, $0.currentScore) }
                             activeCelebration = .gameWon(
-                                winnerName: matchWinner.name,
-                                scores: finalScores,
-                                wins: pWins,
-                                isMatchFinished: true
+                                winnerName: winner.name,
+                                scores: finalScores
                             )
                             triggerGameWinHaptics()
-                        } else {
-                            // Check if a partition/game just finished (it resets players' current scores to 0, and increments gameWins).
-                            // So if a gameWin occurred, but no matchWinner yet (meaning in best-of-3, one is at 1 win, other is at 0 or 1),
-                            // we show game won celebration, but with isMatchFinished: false.
-                            // We detect this if a game was just archived in completedGamesRounds and rounds count is 0.
-                            if updatedGame.rounds.isEmpty, let lastRounds = updatedGame.completedGamesRounds.last {
-                                // Find who won this game by calculating points from lastRounds
-                                let player0 = updatedGame.players[0]
-                                let player1 = updatedGame.players[1]
-                                let pts0 = lastRounds.reduce(0) { $0 + $1.pointsForPlayer(id: player0.id) }
-                                let pts1 = lastRounds.reduce(0) { $0 + $1.pointsForPlayer(id: player1.id) }
-                                
-                                let gameWinnerName = pts0 > pts1 ? player0.name : player1.name
-                                let finalScores = [(player0.name, pts0), (player1.name, pts1)]
-                                let pWins = updatedGame.players.map { ($0.name, $0.gameWins) }
-                                
-                                activeCelebration = .gameWon(
-                                    winnerName: gameWinnerName,
-                                    scores: finalScores,
-                                    wins: pWins,
-                                    isMatchFinished: false
-                                )
-                                triggerRoundWinHaptics()
-                            }
                         }
                     }
                 }
@@ -136,7 +89,7 @@ struct CiccopaoloView: View {
             Button("Annulla", role: .cancel) { }
             Button("Azzera", role: .destructive) {
                 triggerHaptic(.notification(.warning))
-                store.resetCiccopaoloGame()
+                store.resetScopaGame()
             }
         } message: {
             Text("Sei sicuro di voler azzerare il punteggio e i round della partita corrente?")
@@ -145,14 +98,14 @@ struct CiccopaoloView: View {
             Button("Annulla", role: .cancel) { }
             Button("Esci", role: .destructive) {
                 triggerHaptic(.notification(.error))
-                store.endCiccopaoloGame()
+                store.endScopaGame()
             }
         } message: {
-            Text("Sei sicuro di voler terminare il match Ciccopaolo corrente? I dati andranno persi.")
+            Text("Sei sicuro di voler terminare la partita Scopa corrente? I dati andranno persi.")
         }
     }
     
-    // MARK: - Setup View
+    // MARK: - SETUP VIEW
     private var setupGameView: some View {
         Form {
             Section {
@@ -162,7 +115,7 @@ struct CiccopaoloView: View {
                         .foregroundColor(.secondary)
                     
                     HStack(spacing: 12) {
-                        ForEach([21, 31], id: \.self) { val in
+                        ForEach([11, 21], id: \.self) { val in
                             Button(action: {
                                 triggerHaptic(.impact(.light))
                                 targetScore = val
@@ -198,19 +151,6 @@ struct CiccopaoloView: View {
                 .padding(.vertical, 8)
             } header: {
                 Text("Impostazioni Punteggio")
-            }
-            .listRowBackground(Color.cardBackground)
-            
-            Section {
-                Picker("Formato Match", selection: $matchFormat) {
-                    ForEach(CiccopaoloMatchFormat.allCases, id: \.self) { format in
-                        Text(format.rawValue).tag(format)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(.vertical, 4)
-            } header: {
-                Text("Formato Match")
             }
             .listRowBackground(Color.cardBackground)
             
@@ -268,7 +208,6 @@ struct CiccopaoloView: View {
                                 if selectedPlayerIds.count < 2 {
                                     selectedPlayerIds.insert(player.id)
                                 } else {
-                                    // Replace one if we already have 2 selected
                                     if let first = selectedPlayerIds.first {
                                         selectedPlayerIds.remove(first)
                                     }
@@ -286,10 +225,10 @@ struct CiccopaoloView: View {
             Section {
                 Button(action: {
                     let selected = store.players.filter { selectedPlayerIds.contains($0.id) }
-                    store.startCiccopaoloGame(targetScore: targetScore, matchFormat: matchFormat, players: selected)
+                    store.startScopaGame(targetScore: targetScore, players: selected)
                     triggerHaptic(.notification(.success))
                 }) {
-                    Text("Inizia Ciccopaolo")
+                    Text("Inizia Scopa")
                         .frame(maxWidth: .infinity)
                         .fontWeight(.bold)
                         .foregroundColor(.white)
@@ -302,12 +241,12 @@ struct CiccopaoloView: View {
         .background(Color.appBackground)
     }
     
-    // MARK: - Active Game View
-    private func activeGameView(_ game: CiccopaoloGame) -> some View {
+    // MARK: - ACTIVE GAME VIEW
+    private func activeGameView(_ game: ScopaGame) -> some View {
         VStack(spacing: 0) {
             // Stats Header
             HStack {
-                Text(game.matchFormat.rawValue)
+                Text("Partita a Scopa")
                     .font(.caption)
                     .fontWeight(.semibold)
                     .foregroundColor(.secondary)
@@ -322,7 +261,7 @@ struct CiccopaoloView: View {
                 
                 Spacer()
                 
-                Text("Partita a: \(game.targetScore) pt")
+                Text("Obiettivo: \(game.targetScore) pt")
                     .font(.caption)
                     .fontWeight(.semibold)
                     .foregroundColor(.secondary)
@@ -349,18 +288,9 @@ struct CiccopaoloView: View {
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                         
-                        Text("\(game.players[0].currentPartitionScore)")
-                            .font(.system(size: 48, weight: .bold, design: .rounded))
+                        Text("\(game.players[0].currentScore)")
+                            .font(.system(size: 54, weight: .bold, design: .rounded))
                             .foregroundColor(.primary)
-                        
-                        HStack(spacing: 4) {
-                            Text("Partite Vinte:")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Text("\(game.players[0].gameWins) 🏆")
-                                .font(.caption.bold())
-                                .foregroundColor(.trophyGold)
-                        }
                     }
                     .frame(maxWidth: .infinity)
                     
@@ -377,18 +307,9 @@ struct CiccopaoloView: View {
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                         
-                        Text("\(game.players[1].currentPartitionScore)")
-                            .font(.system(size: 48, weight: .bold, design: .rounded))
+                        Text("\(game.players[1].currentScore)")
+                            .font(.system(size: 54, weight: .bold, design: .rounded))
                             .foregroundColor(.primary)
-                        
-                        HStack(spacing: 4) {
-                            Text("Partite Vinte:")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Text("\(game.players[1].gameWins) 🏆")
-                                .font(.caption.bold())
-                                .foregroundColor(.trophyGold)
-                        }
                     }
                     .frame(maxWidth: .infinity)
                 }
@@ -406,14 +327,14 @@ struct CiccopaoloView: View {
                     if game.rounds.isEmpty {
                         VStack(spacing: 16) {
                             Spacer(minLength: 40)
-                            Image(systemName: "suit.club")
+                            Image(systemName: "suit.diamond")
                                 .font(.system(size: 40))
                                 .foregroundColor(.secondary.opacity(0.4))
-                            Text("Nessun round registrato per questa partita.")
+                            Text("Nessuna smazzata registrata.")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                                 .multilineTextAlignment(.center)
-                            Text("Fai la smazzata e inserisci i punti qui sotto.")
+                            Text("Esegui la smazzata e inserisci i punti qui sotto.")
                                 .font(.caption)
                                 .foregroundColor(.secondary.opacity(0.6))
                         }
@@ -427,9 +348,9 @@ struct CiccopaoloView: View {
                         
                         LazyVStack(spacing: 10) {
                             ForEach(game.rounds.reversed()) { round in
-                                CiccopaoloRoundHistoryRow(round: round, game: game) {
+                                ScopaRoundHistoryRow(round: round, game: game) {
                                     if let idx = game.rounds.firstIndex(where: { $0.id == round.id }) {
-                                        store.deleteCiccopaoloRound(at: IndexSet(integer: idx))
+                                        store.deleteScopaRound(at: IndexSet(integer: idx))
                                     }
                                 }
                             }
@@ -453,7 +374,7 @@ struct CiccopaoloView: View {
                     .fontWeight(.bold)
                     .foregroundColor(.white)
                     .padding()
-                    .background(Color.appAccent)
+                    .background(Color.orange)
                     .cornerRadius(14)
                 }
                 
@@ -498,10 +419,10 @@ struct CiccopaoloView: View {
     }
 }
 
-// MARK: - Round History Row component
-struct CiccopaoloRoundHistoryRow: View {
-    let round: CiccopaoloRound
-    let game: CiccopaoloGame
+// MARK: - SCOPA ROUND HISTORY ROW
+struct ScopaRoundHistoryRow: View {
+    let round: ScopaRound
+    let game: ScopaGame
     let onDelete: () -> Void
     
     var body: some View {
@@ -513,7 +434,7 @@ struct CiccopaoloRoundHistoryRow: View {
                 
                 Spacer()
                 
-                // Show breakdown of the round
+                // Show breakdown
                 HStack(spacing: 8) {
                     ForEach(game.players) { player in
                         let pts = round.pointsForPlayer(id: player.id)
@@ -528,31 +449,31 @@ struct CiccopaoloRoundHistoryRow: View {
                 }
             }
             
-            // Show icons of what was won in this round
+            // Badges for what was won
             HStack(spacing: 6) {
-                pointBadge(label: "Primiera", winnerId: round.primieraWinnerId)
-                pointBadge(label: "Settebello", winnerId: round.settebelloWinnerId)
-                pointBadge(label: "Carte", winnerId: round.carteWinnerId)
-                pointBadge(label: "Mazzo", winnerId: round.mazzoWinnerId)
+                badge(label: "Primiera", winnerId: round.primieraWinnerId)
+                badge(label: "Settebello", winnerId: round.settebelloWinnerId)
+                badge(label: "Carte", winnerId: round.carteWinnerId)
+                badge(label: "Denari", winnerId: round.denariWinnerId)
             }
             
-            // Show scope and extra points if any
+            // Scope & Napola text
             let p0 = game.players[0]
             let p1 = game.players[1]
             let sc0 = round.scopeScores[p0.id] ?? 0
             let sc1 = round.scopeScores[p1.id] ?? 0
-            let ex0 = round.extraScores[p0.id] ?? 0
-            let ex1 = round.extraScores[p1.id] ?? 0
+            let np0 = round.napolaScores[p0.id] ?? 0
+            let np1 = round.napolaScores[p1.id] ?? 0
             
-            if sc0 > 0 || sc1 > 0 || ex0 > 0 || ex1 > 0 {
+            if sc0 > 0 || sc1 > 0 || np0 > 0 || np1 > 0 {
                 HStack(spacing: 12) {
                     if sc0 > 0 || sc1 > 0 {
                         Text("Scope: \(p0.name) (\(sc0)) - \(p1.name) (\(sc1))")
                             .font(.caption2)
                             .foregroundColor(.secondary)
                     }
-                    if ex0 > 0 || ex1 > 0 {
-                        Text("Extra: \(p0.name) (+\(ex0)) - \(p1.name) (+\(ex1))")
+                    if np0 > 0 || np1 > 0 {
+                        Text("Napola: \(p0.name) (+\(np0)) - \(p1.name) (+\(np1))")
                             .font(.caption2)
                             .foregroundColor(.secondary)
                     }
@@ -576,7 +497,7 @@ struct CiccopaoloRoundHistoryRow: View {
         }
     }
     
-    private func pointBadge(label: String, winnerId: UUID?) -> some View {
+    private func badge(label: String, winnerId: UUID?) -> some View {
         let playerName = game.players.first(where: { $0.id == winnerId })?.name ?? "-"
         return HStack(spacing: 3) {
             Text(label[label.startIndex..<label.index(label.startIndex, offsetBy: min(3, label.count))].uppercased())
@@ -584,45 +505,44 @@ struct CiccopaoloRoundHistoryRow: View {
                 .foregroundColor(.secondary)
             Text(playerName)
                 .font(.system(size: 9, weight: .bold))
-                .foregroundColor(winnerId != nil ? .appAccent : .secondary.opacity(0.5))
+                .foregroundColor(winnerId != nil ? .orange : .secondary.opacity(0.5))
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 3)
-        .background(winnerId != nil ? Color.appAccent.opacity(0.1) : Color.white.opacity(0.02))
+        .background(winnerId != nil ? Color.orange.opacity(0.1) : Color.white.opacity(0.02))
         .cornerRadius(6)
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(winnerId != nil ? Color.appAccent.opacity(0.25) : Color.cardStroke, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(winnerId != nil ? Color.orange.opacity(0.25) : Color.cardStroke, lineWidth: 1))
     }
 }
 
-// MARK: - Interactive Add Round Sheet
-struct CiccopaoloAddRoundSheet: View {
+// MARK: - SCOPA INTERACTIVE ADD ROUND SHEET
+struct ScopaAddRoundSheet: View {
     @Environment(\.dismiss) private var dismiss
-    let game: CiccopaoloGame
+    let game: ScopaGame
     let onSave: (UUID?, UUID?, UUID?, UUID?, [UUID: Int], [UUID: Int]) -> Void
     
     // Selections
     @State private var primieraWinnerId: UUID? = nil
     @State private var settebelloWinnerId: UUID? = nil
     @State private var carteWinnerId: UUID? = nil
-    @State private var mazzoWinnerId: UUID? = nil
+    @State private var denariWinnerId: UUID? = nil
     
-    // Scope and Extra
+    // Scope and Napola
     @State private var scopeScores: [UUID: Int] = [:]
-    @State private var extraScores: [UUID: Int] = [:]
+    @State private var napolaScores: [UUID: Int] = [:]
     
-    init(game: CiccopaoloGame, onSave: @escaping (UUID?, UUID?, UUID?, UUID?, [UUID: Int], [UUID: Int]) -> Void) {
+    init(game: ScopaGame, onSave: @escaping (UUID?, UUID?, UUID?, UUID?, [UUID: Int], [UUID: Int]) -> Void) {
         self.game = game
         self.onSave = onSave
         
-        // Initialize dictionaries
         var tempScopes: [UUID: Int] = [:]
-        var tempExtras: [UUID: Int] = [:]
+        var tempNapolas: [UUID: Int] = [:]
         for p in game.players {
             tempScopes[p.id] = 0
-            tempExtras[p.id] = 0
+            tempNapolas[p.id] = 0
         }
         _scopeScores = State(initialValue: tempScopes)
-        _extraScores = State(initialValue: tempExtras)
+        _napolaScores = State(initialValue: tempNapolas)
     }
     
     var body: some View {
@@ -641,7 +561,7 @@ struct CiccopaoloAddRoundSheet: View {
                             pointSelectorRow(title: "Primiera", selection: $primieraWinnerId)
                             pointSelectorRow(title: "Settebello", selection: $settebelloWinnerId)
                             pointSelectorRow(title: "Carte", selection: $carteWinnerId)
-                            pointSelectorRow(title: "Mazzo", selection: $mazzoWinnerId)
+                            pointSelectorRow(title: "Denari", selection: $denariWinnerId)
                         }
                         .padding()
                         .background(Color.cardBackground)
@@ -715,9 +635,9 @@ struct CiccopaoloAddRoundSheet: View {
                         .padding(.horizontal)
                     }
                     
-                    // Extra Points Section
+                    // Napola Section
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Punti Extra (es. Napola o altro)")
+                        Text("Punti Napola / Napoli (da 3 a 10 pt)")
                             .font(.caption.bold())
                             .foregroundColor(.secondary)
                             .tracking(1)
@@ -734,8 +654,8 @@ struct CiccopaoloAddRoundSheet: View {
                                     HStack(spacing: 14) {
                                         Button(action: {
                                             triggerHaptic(.impact(.light))
-                                            let current = extraScores[player.id] ?? 0
-                                            extraScores[player.id] = max(0, current - 1)
+                                            let current = napolaScores[player.id] ?? 0
+                                            napolaScores[player.id] = max(0, current - 1)
                                         }) {
                                             Image(systemName: "minus")
                                                 .font(.caption.bold())
@@ -746,7 +666,7 @@ struct CiccopaoloAddRoundSheet: View {
                                         }
                                         .buttonStyle(.plain)
                                         
-                                        Text("\(extraScores[player.id] ?? 0)")
+                                        Text("\(napolaScores[player.id] ?? 0)")
                                             .font(.title3.bold())
                                             .foregroundColor(.primary)
                                             .frame(width: 30)
@@ -754,8 +674,9 @@ struct CiccopaoloAddRoundSheet: View {
                                         
                                         Button(action: {
                                             triggerHaptic(.impact(.light))
-                                            let current = extraScores[player.id] ?? 0
-                                            extraScores[player.id] = current + 1
+                                            let current = napolaScores[player.id] ?? 0
+                                            // Napoli max score is usually 10 points
+                                            napolaScores[player.id] = min(10, current + 1)
                                         }) {
                                             Image(systemName: "plus")
                                                 .font(.caption.bold())
@@ -780,7 +701,7 @@ struct CiccopaoloAddRoundSheet: View {
                         .padding(.horizontal)
                     }
                     
-                    // Live Preview of Round Score
+                    // Live Preview
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Anteprima Punti Round")
                             .font(.caption.bold())
@@ -832,9 +753,9 @@ struct CiccopaoloAddRoundSheet: View {
                             primieraWinnerId,
                             settebelloWinnerId,
                             carteWinnerId,
-                            mazzoWinnerId,
+                            denariWinnerId,
                             scopeScores,
-                            extraScores
+                            napolaScores
                         )
                         dismiss()
                     }) {
@@ -843,7 +764,7 @@ struct CiccopaoloAddRoundSheet: View {
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(Color.appAccent)
+                            .background(Color.orange)
                             .cornerRadius(14)
                     }
                     .padding(.horizontal)
@@ -853,7 +774,7 @@ struct CiccopaoloAddRoundSheet: View {
             }
             .scrollContentBackground(.hidden)
             .background(Color.appBackground)
-            .navigationTitle("Registra Punti Smazzata")
+            .navigationTitle("Punti Smazzata Scopa")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -871,9 +792,9 @@ struct CiccopaoloAddRoundSheet: View {
         if primieraWinnerId == playerId { total += 1 }
         if settebelloWinnerId == playerId { total += 1 }
         if carteWinnerId == playerId { total += 1 }
-        if mazzoWinnerId == playerId { total += 1 }
+        if denariWinnerId == playerId { total += 1 }
         total += scopeScores[playerId] ?? 0
-        total += extraScores[playerId] ?? 0
+        total += napolaScores[playerId] ?? 0
         return total
     }
     
@@ -884,7 +805,6 @@ struct CiccopaoloAddRoundSheet: View {
                 .foregroundColor(.secondary)
             
             HStack(spacing: 8) {
-                // Player 0
                 let p0 = game.players[0]
                 Button(action: {
                     triggerHaptic(.impact(.light))
@@ -899,13 +819,12 @@ struct CiccopaoloAddRoundSheet: View {
                         .foregroundColor(selection.wrappedValue == p0.id ? .white : .secondary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
-                        .background(selection.wrappedValue == p0.id ? Color.appAccent : Color.white.opacity(0.04))
+                        .background(selection.wrappedValue == p0.id ? Color.orange : Color.white.opacity(0.04))
                         .cornerRadius(8)
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(selection.wrappedValue == p0.id ? Color.appAccent : Color.cardStroke, lineWidth: 1))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(selection.wrappedValue == p0.id ? Color.orange : Color.cardStroke, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
                 
-                // Nessuno / Tie
                 Button(action: {
                     triggerHaptic(.impact(.light))
                     selection.wrappedValue = nil
@@ -921,7 +840,6 @@ struct CiccopaoloAddRoundSheet: View {
                 }
                 .buttonStyle(.plain)
                 
-                // Player 1
                 let p1 = game.players[1]
                 Button(action: {
                     triggerHaptic(.impact(.light))
@@ -936,9 +854,9 @@ struct CiccopaoloAddRoundSheet: View {
                         .foregroundColor(selection.wrappedValue == p1.id ? .white : .secondary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
-                        .background(selection.wrappedValue == p1.id ? Color.appAccent : Color.white.opacity(0.04))
+                        .background(selection.wrappedValue == p1.id ? Color.orange : Color.white.opacity(0.04))
                         .cornerRadius(8)
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(selection.wrappedValue == p1.id ? Color.appAccent : Color.cardStroke, lineWidth: 1))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(selection.wrappedValue == p1.id ? Color.orange : Color.cardStroke, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
             }
@@ -946,12 +864,10 @@ struct CiccopaoloAddRoundSheet: View {
     }
 }
 
-// MARK: - Celebration Overlay View for Ciccopaolo
-struct CiccopaoloCelebrationOverlay: View {
+// MARK: - SCOPA CELEBRATION OVERLAY
+struct ScopaCelebrationOverlay: View {
     let winnerName: String
     let scores: [(name: String, score: Int)]
-    let wins: [(name: String, wins: Int)]
-    let isMatchFinished: Bool
     let onDismiss: () -> Void
     
     @State private var scale: CGFloat = 0.5
@@ -965,7 +881,6 @@ struct CiccopaoloCelebrationOverlay: View {
             VStack(spacing: 24) {
                 Spacer()
                 
-                // Glowing trophy or crown
                 ZStack {
                     Circle()
                         .stroke(Color.trophyGold.opacity(0.15), lineWidth: 4)
@@ -984,7 +899,7 @@ struct CiccopaoloCelebrationOverlay: View {
                         .frame(width: 124, height: 124)
                         .rotationEffect(.degrees(rotate))
                     
-                    Image(systemName: isMatchFinished ? "trophy.fill" : "crown.fill")
+                    Image(systemName: "trophy.fill")
                         .font(.system(size: 60))
                         .foregroundColor(.trophyGold)
                         .shadow(color: Color.trophyGold.opacity(0.4), radius: 12)
@@ -992,12 +907,12 @@ struct CiccopaoloCelebrationOverlay: View {
                 .scaleEffect(scale)
                 
                 VStack(spacing: 8) {
-                    Text(isMatchFinished ? "MATCH COMPLETATO" : "PARTITA COMPLETATA")
+                    Text("PARTITA COMPLETATA")
                         .font(.caption.bold())
                         .foregroundColor(.secondary)
                         .tracking(2)
                     
-                    Text(isMatchFinished ? "VINCITORE DELLO SCONTRO!" : "VINCITORE DELLA PARTITA!")
+                    Text("VINCITORE DELLA PARTITA!")
                         .font(.system(size: 20, weight: .black))
                         .foregroundColor(.trophyGold)
                         .tracking(1)
@@ -1011,52 +926,21 @@ struct CiccopaoloCelebrationOverlay: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
                     
-                    // Final game points
                     if scores.count == 2 {
-                        VStack(spacing: 4) {
-                            Text("PUNTEGGI PARTITA")
+                        VStack(spacing: 8) {
+                            Text("PUNTEGGI FINALI")
                                 .font(.caption.bold())
                                 .foregroundColor(.secondary)
                             Text("\(scores[0].name) \(scores[0].score)  -  \(scores[1].score) \(scores[1].name)")
-                                .font(.headline.bold())
+                                .font(.title3.bold())
                                 .foregroundColor(.primary)
                         }
-                        .padding(.vertical, 8)
-                        .padding(.horizontal, 16)
-                        .background(Color.white.opacity(0.04))
-                        .cornerRadius(10)
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 20)
+                        .background(Color.cardBackground)
+                        .cornerRadius(16)
+                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.cardStroke, lineWidth: 1))
                     }
-                    
-                    // Current total wins progress
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("STATO DEL MATCH")
-                            .font(.caption.bold())
-                            .foregroundColor(.secondary)
-                            .tracking(1)
-                            .padding(.horizontal, 4)
-                        
-                        VStack(spacing: 6) {
-                            ForEach(wins, id: \.name) { item in
-                                HStack {
-                                    Text(item.name)
-                                        .font(.body.bold())
-                                        .foregroundColor(.primary)
-                                    Spacer()
-                                    Text("\(item.wins) \(item.wins == 1 ? "Vittoria" : "Vittorie") 🏆")
-                                        .font(.body.bold())
-                                        .foregroundColor(.trophyGold)
-                                }
-                                .padding(.vertical, 8)
-                                .padding(.horizontal, 12)
-                                .background(Color.white.opacity(0.02))
-                                .cornerRadius(8)
-                            }
-                        }
-                    }
-                    .padding()
-                    .background(Color.cardBackground)
-                    .cornerRadius(16)
-                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.cardStroke, lineWidth: 1))
                 }
                 .padding(.horizontal, 30)
                 .scaleEffect(scale)
@@ -1064,14 +948,14 @@ struct CiccopaoloCelebrationOverlay: View {
                 Spacer()
                 
                 Button(action: onDismiss) {
-                    Text(isMatchFinished ? "Torna alla Home" : "Inizia Prossima Partita")
+                    Text("Torna ai Giochi")
                         .font(.headline.bold())
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .padding()
-                        .background(Color.appAccent)
+                        .background(Color.orange)
                         .cornerRadius(14)
-                        .shadow(color: Color.appAccent.opacity(0.3), radius: 8)
+                        .shadow(color: Color.orange.opacity(0.3), radius: 8)
                 }
                 .padding(.horizontal, 30)
                 .padding(.bottom, 30)

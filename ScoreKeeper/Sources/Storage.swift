@@ -10,6 +10,8 @@ public class GameStore {
     public var currentGame: Game?
     public var biscaGame: BiscaGame? = nil
     public var ciccopaoloGame: CiccopaoloGame? = nil
+    public var scopaGame: ScopaGame? = nil
+    public var briscolaGame: BriscolaGame? = nil
     
     // UI temporary state for the active/current round
     public var activeRoundScores: [UUID: Int] = [:]
@@ -41,6 +43,16 @@ public class GameStore {
             .appendingPathComponent("ciccopaolo_game.json")
     }
     
+    private var scopaGameURL: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("scopa_game.json")
+    }
+    
+    private var briscolaGameURL: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("briscola_game.json")
+    }
+    
     public init() {
         loadAll()
     }
@@ -52,6 +64,8 @@ public class GameStore {
         saveJSON(currentGame, to: currentGameURL)
         saveJSON(biscaGame, to: biscaGameURL)
         saveJSON(ciccopaoloGame, to: ciccopaoloGameURL)
+        saveJSON(scopaGame, to: scopaGameURL)
+        saveJSON(briscolaGame, to: briscolaGameURL)
     }
     
     public func loadAll() {
@@ -60,6 +74,8 @@ public class GameStore {
         currentGame = loadJSON(Game.self, from: currentGameURL)
         biscaGame = loadJSON(BiscaGame.self, from: biscaGameURL)
         ciccopaoloGame = loadJSON(CiccopaoloGame.self, from: ciccopaoloGameURL)
+        scopaGame = loadJSON(ScopaGame.self, from: scopaGameURL)
+        briscolaGame = loadJSON(BriscolaGame.self, from: briscolaGameURL)
         
         resetActiveRoundState()
     }
@@ -120,6 +136,7 @@ public class GameStore {
     public func endCurrentGame() {
         guard var game = currentGame else { return }
         game.isCompleted = true
+        game.gameTypeName = "Punti (Standard)"
         gamesHistory.insert(game, at: 0)
         currentGame = nil
         saveAll()
@@ -191,8 +208,8 @@ public class GameStore {
     }
     
     // MARK: - Bisca Game Actions
-    public func startBiscaGame(maxLives: Int, playerNames: [String]) {
-        let bPlayers = playerNames.map { BiscaPlayer(name: $0, lives: maxLives) }
+    public func startBiscaGame(maxLives: Int, players: [Player]) {
+        let bPlayers = players.map { BiscaPlayer(id: $0.id, name: $0.name, lives: maxLives) }
         self.biscaGame = BiscaGame(maxLives: maxLives, players: bPlayers, isActive: true)
         saveAll()
     }
@@ -201,11 +218,16 @@ public class GameStore {
         guard var game = biscaGame else { return }
         if let index = game.players.firstIndex(where: { $0.id == playerId }) {
             let oldLives = game.players[index].lives
-            // Allow going up without limits, and down to 0
             let newLives = max(0, oldLives + amount)
             game.players[index].lives = newLives
             self.biscaGame = game
             saveAll()
+            
+            // Check if there is now exactly one survivor
+            let survivors = game.players.filter { !$0.isEliminated }
+            if survivors.count == 1 {
+                saveCompletedBiscaGame()
+            }
         }
     }
     
@@ -224,8 +246,8 @@ public class GameStore {
     }
     
     // MARK: - Ciccopaolo Game Actions
-    public func startCiccopaoloGame(targetScore: Int, matchFormat: CiccopaoloMatchFormat, playerNames: [String]) {
-        let cpPlayers = playerNames.map { CiccopaoloPlayer(name: $0) }
+    public func startCiccopaoloGame(targetScore: Int, matchFormat: CiccopaoloMatchFormat, players: [Player]) {
+        let cpPlayers = players.map { CiccopaoloPlayer(id: $0.id, name: $0.name) }
         self.ciccopaoloGame = CiccopaoloGame(
             targetScore: targetScore,
             matchFormat: matchFormat,
@@ -267,13 +289,9 @@ public class GameStore {
         }
         
         // Check if game (partita) is finished
-        // We only check at the end of the round!
         let hasPlayerReachedTarget = game.players.contains(where: { $0.currentPartitionScore >= game.targetScore })
         
         if hasPlayerReachedTarget {
-            // Find who won the game (partita)
-            // It's the one with the higher score.
-            // If there's a tie (e.g. both are >= targetScore and they are equal), we play another round (do not declare game win yet).
             let score0 = game.players[0].currentPartitionScore
             let score1 = game.players[1].currentPartitionScore
             
@@ -288,6 +306,12 @@ public class GameStore {
                 // Reset partition scores for next game (if any)
                 for j in 0..<game.players.count {
                     game.players[j].currentPartitionScore = 0
+                }
+                
+                // Save to history if the match is finished!
+                let requiredWins = game.matchFormat == .bottaSecca ? 1 : 2
+                if game.players[winnerIdx].gameWins >= requiredWins {
+                    saveCompletedCiccopaoloGame(game: game)
                 }
             }
         }
@@ -330,6 +354,255 @@ public class GameStore {
     public func endCiccopaoloGame() {
         self.ciccopaoloGame = nil
         saveAll()
+    }
+    
+    // MARK: - Unified History Saving
+    public func saveGameToHistory(participantIds: [UUID], rounds: [Round], gameTypeName: String) {
+        let historyGame = Game(
+            participantIds: participantIds,
+            rounds: rounds,
+            isCompleted: true,
+            gameTypeName: gameTypeName
+        )
+        gamesHistory.insert(historyGame, at: 0)
+        saveAll()
+    }
+    
+    public func saveCompletedBiscaGame() {
+        guard let game = biscaGame else { return }
+        let survivors = game.players.filter { !$0.isEliminated }
+        guard survivors.count == 1 else { return }
+        let winnerId = survivors[0].id
+        
+        let participantIds = game.players.map { $0.id }
+        var scores: [UUID: Int] = [:]
+        for p in game.players {
+            scores[p.id] = p.lives
+        }
+        let round = Round(roundNumber: 1, scores: scores, winnerId: winnerId, note: "Vite rimanenti")
+        
+        saveGameToHistory(participantIds: participantIds, rounds: [round], gameTypeName: "Bisca")
+    }
+    
+    public func saveCompletedCiccopaoloGame(game: CiccopaoloGame) {
+        let participantIds = game.players.map { $0.id }
+        
+        // Find overall winner based on gameWins
+        let winnerId: UUID?
+        let wins0 = game.players[0].gameWins
+        let wins1 = game.players[1].gameWins
+        if wins0 == wins1 {
+            winnerId = nil
+        } else {
+            winnerId = wins0 > wins1 ? participantIds[0] : participantIds[1]
+        }
+        
+        var historyRounds: [Round] = []
+        var roundCounter = 1
+        
+        for gameRounds in game.completedGamesRounds {
+            for cpRound in gameRounds {
+                var scores: [UUID: Int] = [:]
+                for pId in participantIds {
+                    scores[pId] = cpRound.pointsForPlayer(id: pId)
+                }
+                let pts0 = cpRound.pointsForPlayer(id: participantIds[0])
+                let pts1 = cpRound.pointsForPlayer(id: participantIds[1])
+                let roundWinner = pts0 == pts1 ? nil : (pts0 > pts1 ? participantIds[0] : participantIds[1])
+                
+                let hRound = Round(roundNumber: roundCounter, scores: scores, winnerId: roundWinner)
+                historyRounds.append(hRound)
+                roundCounter += 1
+            }
+        }
+        
+        saveGameToHistory(participantIds: participantIds, rounds: historyRounds, gameTypeName: "Ciccopaolo")
+    }
+    
+    // MARK: - Scopa Game Actions
+    public func startScopaGame(targetScore: Int, players: [Player]) {
+        let scPlayers = players.map { ScopaPlayer(id: $0.id, name: $0.name) }
+        self.scopaGame = ScopaGame(targetScore: targetScore, players: scPlayers, isActive: true)
+        saveAll()
+    }
+    
+    public func saveScopaRound(
+        primieraWinnerId: UUID?,
+        settebelloWinnerId: UUID?,
+        carteWinnerId: UUID?,
+        denariWinnerId: UUID?,
+        scopeScores: [UUID: Int],
+        napolaScores: [UUID: Int]
+    ) {
+        guard var game = scopaGame else { return }
+        
+        let roundNumber = game.rounds.count + 1
+        let newRound = ScopaRound(
+            roundNumber: roundNumber,
+            primieraWinnerId: primieraWinnerId,
+            settebelloWinnerId: settebelloWinnerId,
+            carteWinnerId: carteWinnerId,
+            denariWinnerId: denariWinnerId,
+            scopeScores: scopeScores,
+            napolaScores: napolaScores
+        )
+        
+        game.rounds.append(newRound)
+        
+        // Update player scores
+        for i in 0..<game.players.count {
+            let pid = game.players[i].id
+            game.players[i].currentScore += newRound.pointsForPlayer(id: pid)
+        }
+        
+        if game.isFinished {
+            saveCompletedScopaGame(game: game)
+        }
+        
+        self.scopaGame = game
+        saveAll()
+    }
+    
+    public func deleteScopaRound(at offsets: IndexSet) {
+        guard var game = scopaGame else { return }
+        game.rounds.remove(atOffsets: offsets)
+        
+        for i in 0..<game.rounds.count {
+            game.rounds[i].roundNumber = i + 1
+        }
+        
+        for i in 0..<game.players.count {
+            let pid = game.players[i].id
+            game.players[i].currentScore = game.rounds.reduce(0) { $0 + $1.pointsForPlayer(id: pid) }
+        }
+        
+        self.scopaGame = game
+        saveAll()
+    }
+    
+    public func resetScopaGame() {
+        guard var game = scopaGame else { return }
+        for i in 0..<game.players.count {
+            game.players[i].currentScore = 0
+        }
+        game.rounds = []
+        self.scopaGame = game
+        saveAll()
+    }
+    
+    public func endScopaGame() {
+        self.scopaGame = nil
+        saveAll()
+    }
+    
+    private func saveCompletedScopaGame(game: ScopaGame) {
+        let participantIds = game.players.map { $0.id }
+        guard let winner = game.winner else { return }
+        
+        var historyRounds: [Round] = []
+        for scRound in game.rounds {
+            var scores: [UUID: Int] = [:]
+            for pId in participantIds {
+                scores[pId] = scRound.pointsForPlayer(id: pId)
+            }
+            let pts0 = scRound.pointsForPlayer(id: participantIds[0])
+            let pts1 = scRound.pointsForPlayer(id: participantIds[1])
+            let roundWinner = pts0 == pts1 ? nil : (pts0 > pts1 ? participantIds[0] : participantIds[1])
+            
+            let hRound = Round(roundNumber: scRound.roundNumber, scores: scores, winnerId: roundWinner)
+            historyRounds.append(hRound)
+        }
+        
+        saveGameToHistory(participantIds: participantIds, rounds: historyRounds, gameTypeName: "Scopa")
+    }
+    
+    // MARK: - Briscola Game Actions
+    public func startBriscolaGame(targetWins: Int, players: [Player]) {
+        let brPlayers = players.map { BriscolaPlayer(id: $0.id, name: $0.name) }
+        self.briscolaGame = BriscolaGame(targetWins: targetWins, players: brPlayers, isActive: true)
+        saveAll()
+    }
+    
+    public func saveBriscolaRound(cardScores: [UUID: Int]) {
+        guard var game = briscolaGame else { return }
+        
+        let roundNumber = game.rounds.count + 1
+        let newRound = BriscolaRound(roundNumber: roundNumber, cardScores: cardScores)
+        
+        game.rounds.append(newRound)
+        
+        if let winnerId = newRound.winnerId {
+            for i in 0..<game.players.count {
+                if game.players[i].id == winnerId {
+                    game.players[i].gameWins += 1
+                }
+            }
+        }
+        
+        if game.isFinished {
+            saveCompletedBriscolaGame(game: game)
+        }
+        
+        self.briscolaGame = game
+        saveAll()
+    }
+    
+    public func deleteBriscolaRound(at offsets: IndexSet) {
+        guard var game = briscolaGame else { return }
+        game.rounds.remove(atOffsets: offsets)
+        
+        for i in 0..<game.rounds.count {
+            game.rounds[i].roundNumber = i + 1
+        }
+        
+        for i in 0..<game.players.count {
+            game.players[i].gameWins = 0
+        }
+        
+        for round in game.rounds {
+            if let winnerId = round.winnerId {
+                for i in 0..<game.players.count {
+                    if game.players[i].id == winnerId {
+                        game.players[i].gameWins += 1
+                    }
+                }
+            }
+        }
+        
+        self.briscolaGame = game
+        saveAll()
+    }
+    
+    public func resetBriscolaGame() {
+        guard var game = briscolaGame else { return }
+        for i in 0..<game.players.count {
+            game.players[i].gameWins = 0
+        }
+        game.rounds = []
+        self.briscolaGame = game
+        saveAll()
+    }
+    
+    public func endBriscolaGame() {
+        self.briscolaGame = nil
+        saveAll()
+    }
+    
+    private func saveCompletedBriscolaGame(game: BriscolaGame) {
+        let participantIds = game.players.map { $0.id }
+        guard let winner = game.winner else { return }
+        
+        var historyRounds: [Round] = []
+        for brRound in game.rounds {
+            var scores: [UUID: Int] = [:]
+            for pId in participantIds {
+                scores[pId] = brRound.cardScores[pId] ?? 0
+            }
+            let hRound = Round(roundNumber: brRound.roundNumber, scores: scores, winnerId: brRound.winnerId)
+            historyRounds.append(hRound)
+        }
+        
+        saveGameToHistory(participantIds: participantIds, rounds: historyRounds, gameTypeName: "Briscola")
     }
 }
 
