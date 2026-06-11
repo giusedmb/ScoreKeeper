@@ -113,11 +113,23 @@ public struct CiccopaoloRound: Codable, Identifiable, Hashable {
     public var primieraWinnerId: UUID?
     public var settebelloWinnerId: UUID?
     public var carteWinnerId: UUID?
-    public var mazzoWinnerId: UUID?
+    public var denariWinnerId: UUID?
     
     // Extra points (scope, Napola/etc.)
     public var scopeScores: [UUID: Int] // Player.id -> count of scope
     public var extraScores: [UUID: Int] // Player.id -> count of extra points
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case roundNumber
+        case primieraWinnerId
+        case settebelloWinnerId
+        case carteWinnerId
+        case denariWinnerId
+        case mazzoWinnerId // For backwards compatibility
+        case scopeScores
+        case extraScores
+    }
     
     public init(
         id: UUID = UUID(),
@@ -125,7 +137,7 @@ public struct CiccopaoloRound: Codable, Identifiable, Hashable {
         primieraWinnerId: UUID? = nil,
         settebelloWinnerId: UUID? = nil,
         carteWinnerId: UUID? = nil,
-        mazzoWinnerId: UUID? = nil,
+        denariWinnerId: UUID? = nil,
         scopeScores: [UUID: Int] = [:],
         extraScores: [UUID: Int] = [:]
     ) {
@@ -134,9 +146,40 @@ public struct CiccopaoloRound: Codable, Identifiable, Hashable {
         self.primieraWinnerId = primieraWinnerId
         self.settebelloWinnerId = settebelloWinnerId
         self.carteWinnerId = carteWinnerId
-        self.mazzoWinnerId = mazzoWinnerId
+        self.denariWinnerId = denariWinnerId
         self.scopeScores = scopeScores
         self.extraScores = extraScores
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        roundNumber = try container.decode(Int.self, forKey: .roundNumber)
+        primieraWinnerId = try container.decodeIfPresent(UUID.self, forKey: .primieraWinnerId)
+        settebelloWinnerId = try container.decodeIfPresent(UUID.self, forKey: .settebelloWinnerId)
+        carteWinnerId = try container.decodeIfPresent(UUID.self, forKey: .carteWinnerId)
+        
+        // Decode denariWinnerId, fallback to mazzoWinnerId if present
+        if let denari = try container.decodeIfPresent(UUID.self, forKey: .denariWinnerId) {
+            self.denariWinnerId = denari
+        } else {
+            self.denariWinnerId = try container.decodeIfPresent(UUID.self, forKey: .mazzoWinnerId)
+        }
+        
+        scopeScores = try container.decode([UUID: Int].self, forKey: .scopeScores)
+        extraScores = try container.decode([UUID: Int].self, forKey: .extraScores)
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(roundNumber, forKey: .roundNumber)
+        try container.encodeIfPresent(primieraWinnerId, forKey: .primieraWinnerId)
+        try container.encodeIfPresent(settebelloWinnerId, forKey: .settebelloWinnerId)
+        try container.encodeIfPresent(carteWinnerId, forKey: .carteWinnerId)
+        try container.encodeIfPresent(denariWinnerId, forKey: .denariWinnerId)
+        try container.encode(scopeScores, forKey: .scopeScores)
+        try container.encode(extraScores, forKey: .extraScores)
     }
     
     public func pointsForPlayer(id: UUID) -> Int {
@@ -144,7 +187,7 @@ public struct CiccopaoloRound: Codable, Identifiable, Hashable {
         if primieraWinnerId == id { total += 1 }
         if settebelloWinnerId == id { total += 1 }
         if carteWinnerId == id { total += 1 }
-        if mazzoWinnerId == id { total += 1 }
+        if denariWinnerId == id { total += 1 }
         total += scopeScores[id] ?? 0
         total += extraScores[id] ?? 0
         return total

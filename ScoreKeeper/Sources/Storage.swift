@@ -261,7 +261,7 @@ public class GameStore {
         primieraWinnerId: UUID?,
         settebelloWinnerId: UUID?,
         carteWinnerId: UUID?,
-        mazzoWinnerId: UUID?,
+        denariWinnerId: UUID?,
         scopeScores: [UUID: Int],
         extraScores: [UUID: Int]
     ) {
@@ -273,7 +273,7 @@ public class GameStore {
             primieraWinnerId: primieraWinnerId,
             settebelloWinnerId: settebelloWinnerId,
             carteWinnerId: carteWinnerId,
-            mazzoWinnerId: mazzoWinnerId,
+            denariWinnerId: denariWinnerId,
             scopeScores: scopeScores,
             extraScores: extraScores
         )

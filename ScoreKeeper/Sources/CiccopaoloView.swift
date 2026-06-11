@@ -65,13 +65,13 @@ struct CiccopaoloView: View {
         .navigationTitle("Ciccopaolo")
         .sheet(isPresented: $showingAddRoundSheet) {
             if let game = store.ciccopaoloGame {
-                CiccopaoloAddRoundSheet(game: game) { primiera, settebello, carte, mazzo, scope, extra in
+                CiccopaoloAddRoundSheet(game: game) { primiera, settebello, carte, denari, scope, extra in
                     // Call save round
                     store.saveCiccopaoloRound(
                         primieraWinnerId: primiera,
                         settebelloWinnerId: settebello,
                         carteWinnerId: carte,
-                        mazzoWinnerId: mazzo,
+                        denariWinnerId: denari,
                         scopeScores: scope,
                         extraScores: extra
                     )
@@ -533,7 +533,7 @@ struct CiccopaoloRoundHistoryRow: View {
                 pointBadge(label: "Primiera", winnerId: round.primieraWinnerId)
                 pointBadge(label: "Settebello", winnerId: round.settebelloWinnerId)
                 pointBadge(label: "Carte", winnerId: round.carteWinnerId)
-                pointBadge(label: "Mazzo", winnerId: round.mazzoWinnerId)
+                pointBadge(label: "Denari", winnerId: round.denariWinnerId)
             }
             
             // Show scope and extra points if any
@@ -604,7 +604,7 @@ struct CiccopaoloAddRoundSheet: View {
     @State private var primieraWinnerId: UUID? = nil
     @State private var settebelloWinnerId: UUID? = nil
     @State private var carteWinnerId: UUID? = nil
-    @State private var mazzoWinnerId: UUID? = nil
+    @State private var denariWinnerId: UUID? = nil
     
     // Scope and Extra
     @State private var scopeScores: [UUID: Int] = [:]
@@ -641,7 +641,7 @@ struct CiccopaoloAddRoundSheet: View {
                             pointSelectorRow(title: "Primiera", selection: $primieraWinnerId)
                             pointSelectorRow(title: "Settebello", selection: $settebelloWinnerId)
                             pointSelectorRow(title: "Carte", selection: $carteWinnerId)
-                            pointSelectorRow(title: "Mazzo", selection: $mazzoWinnerId)
+                            pointSelectorRow(title: "Denari", selection: $denariWinnerId)
                         }
                         .padding()
                         .background(Color.cardBackground)
@@ -832,7 +832,7 @@ struct CiccopaoloAddRoundSheet: View {
                             primieraWinnerId,
                             settebelloWinnerId,
                             carteWinnerId,
-                            mazzoWinnerId,
+                            denariWinnerId,
                             scopeScores,
                             extraScores
                         )
@@ -871,7 +871,7 @@ struct CiccopaoloAddRoundSheet: View {
         if primieraWinnerId == playerId { total += 1 }
         if settebelloWinnerId == playerId { total += 1 }
         if carteWinnerId == playerId { total += 1 }
-        if mazzoWinnerId == playerId { total += 1 }
+        if denariWinnerId == playerId { total += 1 }
         total += scopeScores[playerId] ?? 0
         total += extraScores[playerId] ?? 0
         return total
