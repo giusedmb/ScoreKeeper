@@ -12,6 +12,7 @@ public class GameStore {
     public var ciccopaoloGame: CiccopaoloGame? = nil
     public var scopaGame: ScopaGame? = nil
     public var briscolaGame: BriscolaGame? = nil
+    public var scalaQuarantaGame: ScalaQuarantaGame? = nil
     
     // UI temporary state for the active/current round
     public var activeRoundScores: [UUID: Int] = [:]
@@ -53,6 +54,11 @@ public class GameStore {
             .appendingPathComponent("briscola_game.json")
     }
     
+    private var scalaQuarantaGameURL: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("scala_quaranta_game.json")
+    }
+    
     public init() {
         loadAll()
     }
@@ -66,6 +72,7 @@ public class GameStore {
         saveJSON(ciccopaoloGame, to: ciccopaoloGameURL)
         saveJSON(scopaGame, to: scopaGameURL)
         saveJSON(briscolaGame, to: briscolaGameURL)
+        saveJSON(scalaQuarantaGame, to: scalaQuarantaGameURL)
     }
     
     public func loadAll() {
@@ -76,6 +83,7 @@ public class GameStore {
         ciccopaoloGame = loadJSON(CiccopaoloGame.self, from: ciccopaoloGameURL)
         scopaGame = loadJSON(ScopaGame.self, from: scopaGameURL)
         briscolaGame = loadJSON(BriscolaGame.self, from: briscolaGameURL)
+        scalaQuarantaGame = loadJSON(ScalaQuarantaGame.self, from: scalaQuarantaGameURL)
         
         resetActiveRoundState()
     }
@@ -603,6 +611,133 @@ public class GameStore {
         }
         
         saveGameToHistory(participantIds: participantIds, rounds: historyRounds, gameTypeName: "Briscola")
+    }
+    
+    // MARK: - Scala Quaranta Game Actions
+    public func startScalaQuarantaGame(targetScore: Int, players: [Player]) {
+        let sqPlayers = players.map { ScalaQuarantaPlayer(id: $0.id, name: $0.name) }
+        self.scalaQuarantaGame = ScalaQuarantaGame(targetScore: targetScore, players: sqPlayers, isActive: true)
+        saveAll()
+    }
+    
+    public func saveScalaQuarantaRound(scores: [UUID: Int], closingPlayerId: UUID?) {
+        guard var game = scalaQuarantaGame else { return }
+        
+        let roundNumber = game.rounds.count + 1
+        let newRound = ScalaQuarantaRound(
+            roundNumber: roundNumber,
+            scores: scores,
+            closingPlayerId: closingPlayerId
+        )
+        
+        game.rounds.append(newRound)
+        
+        // Update players' scores
+        for i in 0..<game.players.count {
+            let pid = game.players[i].id
+            let roundScore = scores[pid] ?? 0
+            
+            // Only add if not already eliminated
+            if !game.players[i].isEliminated {
+                game.players[i].currentScore += roundScore
+                if game.players[i].currentScore >= game.targetScore {
+                    game.players[i].isEliminated = true
+                }
+            }
+        }
+        
+        // Check if finished
+        if game.isFinished {
+            saveCompletedScalaQuarantaGame(game: game)
+        }
+        
+        self.scalaQuarantaGame = game
+        saveAll()
+    }
+    
+    public func deleteScalaQuarantaRound(at offsets: IndexSet) {
+        guard var game = scalaQuarantaGame else { return }
+        game.rounds.remove(atOffsets: offsets)
+        
+        // Re-index round numbers
+        for i in 0..<game.rounds.count {
+            game.rounds[i].roundNumber = i + 1
+        }
+        
+        // Recalculate scores from scratch
+        for i in 0..<game.players.count {
+            let pid = game.players[i].id
+            var calculatedScore = 0
+            for round in game.rounds {
+                calculatedScore += round.scores[pid] ?? 0
+            }
+            game.players[i].currentScore = calculatedScore
+            game.players[i].isEliminated = calculatedScore >= game.targetScore
+            if calculatedScore < game.targetScore {
+                game.players[i].isEliminated = false
+            }
+        }
+        
+        self.scalaQuarantaGame = game
+        saveAll()
+    }
+    
+    public func resetScalaQuarantaGame() {
+        guard var game = scalaQuarantaGame else { return }
+        for i in 0..<game.players.count {
+            game.players[i].currentScore = 0
+            game.players[i].isEliminated = false
+            game.players[i].reentriesCount = 0
+        }
+        game.rounds = []
+        self.scalaQuarantaGame = game
+        saveAll()
+    }
+    
+    public func endScalaQuarantaGame() {
+        self.scalaQuarantaGame = nil
+        saveAll()
+    }
+    
+    public func reenterPlayer(playerId: UUID) {
+        guard var game = scalaQuarantaGame else { return }
+        // The player must be eliminated to re-enter
+        guard let pIndex = game.players.firstIndex(where: { $0.id == playerId }), game.players[pIndex].isEliminated else { return }
+        
+        // Find highest score among currently active (not eliminated) players
+        let activeScores = game.players.filter { !$0.isEliminated }.map { $0.currentScore }
+        
+        if let maxActiveScore = activeScores.max() {
+            game.players[pIndex].currentScore = maxActiveScore
+            game.players[pIndex].isEliminated = false
+            game.players[pIndex].reentriesCount += 1
+            self.scalaQuarantaGame = game
+            saveAll()
+        }
+    }
+    
+    private func saveCompletedScalaQuarantaGame(game: ScalaQuarantaGame) {
+        let participantIds = game.players.map { $0.id }
+        
+        var historyRounds: [Round] = []
+        for sqRound in game.rounds {
+            var scores: [UUID: Int] = [:]
+            for pId in participantIds {
+                scores[pId] = sqRound.scores[pId] ?? 0
+            }
+            
+            let roundWinnerId = sqRound.closingPlayerId
+            
+            let hRound = Round(
+                roundNumber: sqRound.roundNumber,
+                scores: scores,
+                winnerId: roundWinnerId,
+                note: sqRound.closingPlayerId != nil ? "Chiusura" : nil
+            )
+            historyRounds.append(hRound)
+        }
+        
+        saveGameToHistory(participantIds: participantIds, rounds: historyRounds, gameTypeName: "Scala 40")
     }
 }
 

@@ -79,6 +79,19 @@ struct GamesListView: View {
                     }
                     .buttonStyle(.plain)
                     
+                    // SCALA 40
+                    let isScalaQuarantaActive = store.scalaQuarantaGame?.isActive == true
+                    NavigationLink(destination: ScalaQuarantaView().background(Color.appBackground)) {
+                        GameCard(
+                            title: "Scala 40",
+                            subtitle: "Traccia i punti di Scala Quaranta con calcolatore di carte in mano e rientri.",
+                            icon: "square.stack.3d.up.fill",
+                            color: Color.teal,
+                            isActive: isScalaQuarantaActive
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    
                     // STANDARD POINTS
                     let isStandardActive = store.currentGame != nil
                     NavigationLink(destination: GameView(showingNewGame: $showingNewGame, showingAddPlayer: $showingAddPlayer).background(Color.appBackground)) {

@@ -402,3 +402,83 @@ public struct BriscolaGame: Codable, Identifiable, Hashable {
     }
 }
 
+// MARK: - Scala Quaranta Game Models
+public struct ScalaQuarantaPlayer: Codable, Identifiable, Hashable {
+    public let id: UUID // Original Player.id
+    public var name: String
+    public var currentScore: Int // Accumulated score (wants to stay < targetScore)
+    public var isEliminated: Bool // True if currentScore >= targetScore
+    public var reentriesCount: Int // Number of times this player re-entered
+    
+    public init(id: UUID, name: String, currentScore: Int = 0, isEliminated: Bool = false, reentriesCount: Int = 0) {
+        self.id = id
+        self.name = name
+        self.currentScore = currentScore
+        self.isEliminated = isEliminated
+        self.reentriesCount = reentriesCount
+    }
+}
+
+public struct ScalaQuarantaRound: Codable, Identifiable, Hashable {
+    public let id: UUID
+    public var roundNumber: Int
+    public var scores: [UUID: Int] // Player.id -> round score
+    public var closingPlayerId: UUID? // Player.id who closed (gets 0 points)
+    
+    public init(
+        id: UUID = UUID(),
+        roundNumber: Int,
+        scores: [UUID: Int] = [:],
+        closingPlayerId: UUID? = nil
+    ) {
+        self.id = id
+        self.roundNumber = roundNumber
+        self.scores = scores
+        self.closingPlayerId = closingPlayerId
+    }
+}
+
+public struct ScalaQuarantaGame: Codable, Identifiable, Hashable {
+    public let id: UUID
+    public var date: Date
+    public var targetScore: Int // Usually 101, 151, 201, 301, 501
+    public var players: [ScalaQuarantaPlayer]
+    public var rounds: [ScalaQuarantaRound]
+    public var isActive: Bool
+    
+    public var activePlayersCount: Int {
+        players.filter { !$0.isEliminated }.count
+    }
+    
+    public var isFinished: Bool {
+        // Scala Quaranta ends when only 1 active player remains, or if all players are eliminated
+        activePlayersCount <= 1
+    }
+    
+    public var winner: ScalaQuarantaPlayer? {
+        guard isFinished else { return nil }
+        // The winner is the last remaining active player (or the one with the lowest score if all are eliminated)
+        if let lastActive = players.first(where: { !$0.isEliminated }) {
+            return lastActive
+        }
+        return players.min(by: { $0.currentScore < $1.currentScore })
+    }
+    
+    public init(
+        id: UUID = UUID(),
+        date: Date = Date(),
+        targetScore: Int = 101,
+        players: [ScalaQuarantaPlayer] = [],
+        rounds: [ScalaQuarantaRound] = [],
+        isActive: Bool = false
+    ) {
+        self.id = id
+        self.date = date
+        self.targetScore = targetScore
+        self.players = players
+        self.rounds = rounds
+        self.isActive = isActive
+    }
+}
+
+

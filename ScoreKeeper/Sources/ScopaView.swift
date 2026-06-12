@@ -531,6 +531,8 @@ struct ScopaAddRoundSheet: View {
     @State private var scopeScores: [UUID: Int] = [:]
     @State private var napolaScores: [UUID: Int] = [:]
     
+    @State private var showingPrimieraCalculator = false
+    
     init(game: ScopaGame, onSave: @escaping (UUID?, UUID?, UUID?, UUID?, [UUID: Int], [UUID: Int]) -> Void) {
         self.game = game
         self.onSave = onSave
@@ -558,7 +560,9 @@ struct ScopaAddRoundSheet: View {
                             .padding(.horizontal)
                         
                         VStack(spacing: 12) {
-                            pointSelectorRow(title: "Primiera", selection: $primieraWinnerId)
+                            pointSelectorRow(title: "Primiera", selection: $primieraWinnerId) {
+                                showingPrimieraCalculator = true
+                            }
                             pointSelectorRow(title: "Settebello", selection: $settebelloWinnerId)
                             pointSelectorRow(title: "Carte", selection: $carteWinnerId)
                             pointSelectorRow(title: "Denari", selection: $denariWinnerId)
@@ -785,6 +789,16 @@ struct ScopaAddRoundSheet: View {
             }
         }
         .preferredColorScheme(.dark)
+        .sheet(isPresented: $showingPrimieraCalculator) {
+            let primieraPlayers = game.players.map { PrimieraPlayerInfo(id: $0.id, name: $0.name) }
+            PrimieraCalculatorView(
+                players: primieraPlayers,
+                currentWinnerId: primieraWinnerId,
+                settebelloWinnerId: settebelloWinnerId
+            ) { winnerId in
+                primieraWinnerId = winnerId
+            }
+        }
     }
     
     private func calculateRoundTotal(for playerId: UUID) -> Int {
@@ -798,11 +812,35 @@ struct ScopaAddRoundSheet: View {
         return total
     }
     
-    private func pointSelectorRow(title: String, selection: Binding<UUID?>) -> some View {
+    private func pointSelectorRow(title: String, selection: Binding<UUID?>, onHelpTap: (() -> Void)? = nil) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.subheadline.bold())
-                .foregroundColor(.secondary)
+            HStack {
+                Text(title)
+                    .font(.subheadline.bold())
+                    .foregroundColor(.secondary)
+                
+                if let onHelpTap = onHelpTap {
+                    Spacer()
+                    Button(action: onHelpTap) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "square.grid.3x3.fill")
+                                .font(.caption2)
+                            Text("Usa Calcolatore 🧮")
+                                .font(.system(size: 10, weight: .bold))
+                        }
+                        .foregroundColor(.orange)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.orange.opacity(0.12))
+                        .cornerRadius(6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
             
             HStack(spacing: 8) {
                 let p0 = game.players[0]
