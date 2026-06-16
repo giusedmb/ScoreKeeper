@@ -89,7 +89,7 @@ public struct PrimieraCalculatorView: View {
     @Environment(\.dismiss) private var dismiss
     
     let players: [PrimieraPlayerInfo]
-    let onApplyWinner: (UUID?) -> Void
+    let onApply: (UUID?, [UUID: [String: Int]]?) -> Void
     
     @State private var selectedPlayerId: UUID
     // Selections format: [PlayerID: [Suit: SelectedCardRank]]
@@ -100,10 +100,11 @@ public struct PrimieraCalculatorView: View {
         players: [PrimieraPlayerInfo],
         currentWinnerId: UUID? = nil,
         settebelloWinnerId: UUID? = nil,
-        onApplyWinner: @escaping (UUID?) -> Void
+        initialSelections: [UUID: [String: Int]]? = nil,
+        onApply: @escaping (UUID?, [UUID: [String: Int]]?) -> Void
     ) {
         self.players = players
-        self.onApplyWinner = onApplyWinner
+        self.onApply = onApply
         
         // Default select the first player (or current winner if set)
         if let currentWinnerId = currentWinnerId, players.contains(where: { $0.id == currentWinnerId }) {
@@ -112,12 +113,23 @@ public struct PrimieraCalculatorView: View {
             self._selectedPlayerId = State(initialValue: players.first?.id ?? UUID())
         }
         
-        // Pre-fill Settebello (7 of Denari) if the player won it
-        var initialSelections: [UUID: [PrimieraSuit: PrimieraCardRank]] = [:]
-        if let settebelloWinnerId = settebelloWinnerId, players.contains(where: { $0.id == settebelloWinnerId }) {
-            initialSelections[settebelloWinnerId] = [.denari: .seven]
+        // Pre-fill selections
+        var resolvedSelections: [UUID: [PrimieraSuit: PrimieraCardRank]] = [:]
+        if let initial = initialSelections {
+            for (pid, suitMap) in initial {
+                var playerSelections: [PrimieraSuit: PrimieraCardRank] = [:]
+                for (suitStr, rankVal) in suitMap {
+                    if let suit = PrimieraSuit(rawValue: suitStr),
+                       let rank = PrimieraCardRank(rawValue: rankVal) {
+                        playerSelections[suit] = rank
+                    }
+                }
+                resolvedSelections[pid] = playerSelections
+            }
+        } else if let settebelloWinnerId = settebelloWinnerId, players.contains(where: { $0.id == settebelloWinnerId }) {
+            resolvedSelections[settebelloWinnerId] = [.denari: .seven]
         }
-        self._selections = State(initialValue: initialSelections)
+        self._selections = State(initialValue: resolvedSelections)
     }
     
     private func getScore(for playerId: UUID) -> Int {
@@ -126,12 +138,15 @@ public struct PrimieraCalculatorView: View {
     }
     
     private var winningPlayer: PrimieraPlayerInfo? {
-        guard players.count == 2 else { return nil }
-        let s0 = getScore(for: players[0].id)
-        let s1 = getScore(for: players[1].id)
-        if s0 > s1 { return players[0] }
-        if s1 > s0 { return players[1] }
-        return nil
+        let playerScores = players.map { (player: $0, score: getScore(for: $0.id)) }
+        guard let maxScoreEntry = playerScores.max(by: { $0.score < $1.score }) else { return nil }
+        
+        // Check if there is a tie for the highest score
+        let allWithMax = playerScores.filter { $0.score == maxScoreEntry.score }
+        if allWithMax.count == 1 && maxScoreEntry.score > 0 {
+            return maxScoreEntry.player
+        }
+        return nil // Tie or no winner
     }
     
     public var body: some View {
@@ -308,7 +323,19 @@ public struct PrimieraCalculatorView: View {
                     
                     Button(action: {
                         let winner = winningPlayer
-                        onApplyWinner(winner?.id)
+                        
+                        var details: [UUID: [String: Int]] = [:]
+                        for (pid, suitMap) in selections {
+                            var playerDetails: [String: Int] = [:]
+                            for (suit, rank) in suitMap {
+                                playerDetails[suit.rawValue] = rank.rawValue
+                            }
+                            if !playerDetails.isEmpty {
+                                details[pid] = playerDetails
+                            }
+                        }
+                        
+                        onApply(winner?.id, details.isEmpty ? nil : details)
                         dismiss()
                     }) {
                         Text(winningPlayer == nil ? "Applica Pareggio / Nessuno" : "Applica Vincitore: \(winningPlayer!.name)")

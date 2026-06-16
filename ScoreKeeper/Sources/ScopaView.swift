@@ -30,6 +30,7 @@ struct ScopaView: View {
     @State private var showingResetAlert = false
     @State private var showingExitAlert = false
     @State private var activeCelebration: ScopaCelebrationState = .none
+    @State private var selectedRoundForDetail: ScopaRound? = nil
     
     var body: some View {
         ZStack {
@@ -61,14 +62,15 @@ struct ScopaView: View {
         .navigationTitle("Scopa")
         .sheet(isPresented: $showingAddRoundSheet) {
             if let game = store.scopaGame {
-                ScopaAddRoundSheet(game: game) { primiera, settebello, carte, denari, scope, napola in
+                ScopaAddRoundSheet(game: game) { primiera, settebello, carte, denari, scope, napola, details in
                     store.saveScopaRound(
                         primieraWinnerId: primiera,
                         settebelloWinnerId: settebello,
                         carteWinnerId: carte,
                         denariWinnerId: denari,
                         scopeScores: scope,
-                        napolaScores: napola
+                        napolaScores: napola,
+                        primieraDetails: details
                     )
                     
                     // Immediately check if game was won, to show celebration
@@ -82,6 +84,13 @@ struct ScopaView: View {
                             triggerGameWinHaptics()
                         }
                     }
+                }
+            }
+        }
+        .sheet(item: $selectedRoundForDetail) { round in
+            if let game = store.scopaGame {
+                ScopaRoundDetailSheet(round: round, game: game) { updatedRound in
+                    store.updateScopaRound(updatedRound: updatedRound)
                 }
             }
         }
@@ -353,6 +362,11 @@ struct ScopaView: View {
                                         store.deleteScopaRound(at: IndexSet(integer: idx))
                                     }
                                 }
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    triggerHaptic(.impact(.light))
+                                    selectedRoundForDetail = round
+                                }
                             }
                         }
                         .padding(.horizontal)
@@ -519,7 +533,8 @@ struct ScopaRoundHistoryRow: View {
 struct ScopaAddRoundSheet: View {
     @Environment(\.dismiss) private var dismiss
     let game: ScopaGame
-    let onSave: (UUID?, UUID?, UUID?, UUID?, [UUID: Int], [UUID: Int]) -> Void
+    let roundToEdit: ScopaRound?
+    let onSave: (UUID?, UUID?, UUID?, UUID?, [UUID: Int], [UUID: Int], [UUID: [String: Int]]?) -> Void
     
     // Selections
     @State private var primieraWinnerId: UUID? = nil
@@ -531,20 +546,35 @@ struct ScopaAddRoundSheet: View {
     @State private var scopeScores: [UUID: Int] = [:]
     @State private var napolaScores: [UUID: Int] = [:]
     
+    // Primiera Details
+    @State private var primieraDetails: [UUID: [String: Int]]? = nil
+    
     @State private var showingPrimieraCalculator = false
     
-    init(game: ScopaGame, onSave: @escaping (UUID?, UUID?, UUID?, UUID?, [UUID: Int], [UUID: Int]) -> Void) {
+    init(game: ScopaGame, roundToEdit: ScopaRound? = nil, onSave: @escaping (UUID?, UUID?, UUID?, UUID?, [UUID: Int], [UUID: Int], [UUID: [String: Int]]?) -> Void) {
         self.game = game
+        self.roundToEdit = roundToEdit
         self.onSave = onSave
         
-        var tempScopes: [UUID: Int] = [:]
-        var tempNapolas: [UUID: Int] = [:]
-        for p in game.players {
-            tempScopes[p.id] = 0
-            tempNapolas[p.id] = 0
+        if let round = roundToEdit {
+            _primieraWinnerId = State(initialValue: round.primieraWinnerId)
+            _settebelloWinnerId = State(initialValue: round.settebelloWinnerId)
+            _carteWinnerId = State(initialValue: round.carteWinnerId)
+            _denariWinnerId = State(initialValue: round.denariWinnerId)
+            _scopeScores = State(initialValue: round.scopeScores)
+            _napolaScores = State(initialValue: round.napolaScores)
+            _primieraDetails = State(initialValue: round.primieraDetails)
+        } else {
+            var tempScopes: [UUID: Int] = [:]
+            var tempNapolas: [UUID: Int] = [:]
+            for p in game.players {
+                tempScopes[p.id] = 0
+                tempNapolas[p.id] = 0
+            }
+            _scopeScores = State(initialValue: tempScopes)
+            _napolaScores = State(initialValue: tempNapolas)
+            _primieraDetails = State(initialValue: nil)
         }
-        _scopeScores = State(initialValue: tempScopes)
-        _napolaScores = State(initialValue: tempNapolas)
     }
     
     var body: some View {
@@ -759,11 +789,12 @@ struct ScopaAddRoundSheet: View {
                             carteWinnerId,
                             denariWinnerId,
                             scopeScores,
-                            napolaScores
+                            napolaScores,
+                            primieraDetails
                         )
                         dismiss()
                     }) {
-                        Text("Salva Round")
+                        Text(roundToEdit == nil ? "Salva Round" : "Salva Modifiche")
                             .font(.headline.bold())
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
@@ -778,7 +809,7 @@ struct ScopaAddRoundSheet: View {
             }
             .scrollContentBackground(.hidden)
             .background(Color.appBackground)
-            .navigationTitle("Punti Smazzata Scopa")
+            .navigationTitle(roundToEdit == nil ? "Punti Smazzata Scopa" : "Modifica Smazzata \(roundToEdit!.roundNumber)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -794,9 +825,11 @@ struct ScopaAddRoundSheet: View {
             PrimieraCalculatorView(
                 players: primieraPlayers,
                 currentWinnerId: primieraWinnerId,
-                settebelloWinnerId: settebelloWinnerId
-            ) { winnerId in
+                settebelloWinnerId: settebelloWinnerId,
+                initialSelections: primieraDetails
+            ) { winnerId, details in
                 primieraWinnerId = winnerId
+                primieraDetails = details
             }
         }
     }
@@ -851,6 +884,9 @@ struct ScopaAddRoundSheet: View {
                     } else {
                         selection.wrappedValue = p0.id
                     }
+                    if title == "Primiera" {
+                        primieraDetails = nil
+                    }
                 }) {
                     Text(p0.name)
                         .font(.caption.bold())
@@ -866,6 +902,9 @@ struct ScopaAddRoundSheet: View {
                 Button(action: {
                     triggerHaptic(.impact(.light))
                     selection.wrappedValue = nil
+                    if title == "Primiera" {
+                        primieraDetails = nil
+                    }
                 }) {
                     Text("Nessuno")
                         .font(.caption.bold())
@@ -886,6 +925,9 @@ struct ScopaAddRoundSheet: View {
                     } else {
                         selection.wrappedValue = p1.id
                     }
+                    if title == "Primiera" {
+                        primieraDetails = nil
+                    }
                 }) {
                     Text(p1.name)
                         .font(.caption.bold())
@@ -897,6 +939,190 @@ struct ScopaAddRoundSheet: View {
                         .overlay(RoundedRectangle(cornerRadius: 8).stroke(selection.wrappedValue == p1.id ? Color.orange : Color.cardStroke, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
+// MARK: - SCOPA ROUND DETAIL SHEET
+struct ScopaRoundDetailSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let round: ScopaRound
+    let game: ScopaGame
+    let onUpdate: (ScopaRound) -> Void
+    
+    @State private var showingEditSheet = false
+    
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    HStack {
+                        Text("Smazzata")
+                        Spacer()
+                        Text("\(round.roundNumber)")
+                            .fontWeight(.bold)
+                    }
+                } header: {
+                    Text("Informazioni Generali")
+                }
+                .listRowBackground(Color.cardBackground)
+                
+                Section {
+                    ForEach(game.players) { player in
+                        let pts = round.pointsForPlayer(id: player.id)
+                        HStack {
+                            Text(player.name)
+                            Spacer()
+                            Text("+\(pts) pt")
+                                .fontWeight(.bold)
+                                .foregroundColor(pts > 0 ? .scorePositive : .secondary)
+                        }
+                    }
+                } header: {
+                    Text("Punti Round Totali")
+                }
+                .listRowBackground(Color.cardBackground)
+                
+                Section {
+                    detailRow(title: "Primiera", winnerId: round.primieraWinnerId)
+                    detailRow(title: "Settebello", winnerId: round.settebelloWinnerId)
+                    detailRow(title: "Carte", winnerId: round.carteWinnerId)
+                    detailRow(title: "Denari", winnerId: round.denariWinnerId)
+                } header: {
+                    Text("Punti Classici")
+                }
+                .listRowBackground(Color.cardBackground)
+                
+                Section {
+                    ForEach(game.players) { player in
+                        let sc = round.scopeScores[player.id] ?? 0
+                        HStack {
+                            Text(player.name)
+                            Spacer()
+                            Text("\(sc) Scope")
+                                .foregroundColor(sc > 0 ? .orange : .secondary)
+                        }
+                    }
+                } header: {
+                    Text("Scope")
+                }
+                .listRowBackground(Color.cardBackground)
+                
+                if game.players.contains(where: { (round.napolaScores[$0.id] ?? 0) > 0 }) {
+                    Section {
+                        ForEach(game.players) { player in
+                            let np = round.napolaScores[player.id] ?? 0
+                            HStack {
+                                Text(player.name)
+                                Spacer()
+                                Text("+\(np) pt")
+                                    .foregroundColor(np > 0 ? .appAccent : .secondary)
+                            }
+                        }
+                    } header: {
+                        Text("Napola")
+                    }
+                    .listRowBackground(Color.cardBackground)
+                }
+                
+                // Primiera Details section!
+                if let details = round.primieraDetails {
+                    Section {
+                        ForEach(game.players) { player in
+                            if let playerDetails = details[player.id], !playerDetails.isEmpty {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(player.name)
+                                        .font(.subheadline.bold())
+                                        .foregroundColor(.orange)
+                                    
+                                    ForEach(PrimieraSuit.allCases) { suit in
+                                        if let rankVal = playerDetails[suit.rawValue],
+                                           let rank = PrimieraCardRank(rawValue: rankVal) {
+                                            HStack {
+                                                Text("\(suit.icon) \(suit.rawValue)")
+                                                    .font(.caption)
+                                                    .foregroundColor(.secondary)
+                                                Spacer()
+                                                Text("\(rank.displayName) (\(rank.primieraPoints) pt)")
+                                                    .font(.caption.bold())
+                                                    .foregroundColor(.primary)
+                                            }
+                                        }
+                                    }
+                                }
+                                .padding(.vertical, 4)
+                            }
+                        }
+                    } header: {
+                        Text("Dettaglio Carte Primiera")
+                    }
+                    .listRowBackground(Color.cardBackground)
+                } else {
+                    Section {
+                        HStack {
+                            Text("Dettagli non disponibili")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text("Calcolata a mano")
+                                .font(.caption.bold())
+                                .foregroundColor(.secondary.opacity(0.7))
+                        }
+                    } header: {
+                        Text("Dettaglio Carte Primiera")
+                    }
+                    .listRowBackground(Color.cardBackground)
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(Color.appBackground)
+            .navigationTitle("Dettaglio Smazzata \(round.roundNumber)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Chiudi") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Modifica") {
+                        showingEditSheet = true
+                    }
+                    .foregroundColor(.orange)
+                }
+            }
+            .sheet(isPresented: $showingEditSheet) {
+                ScopaAddRoundSheet(game: game, roundToEdit: round) { primiera, settebello, carte, denari, scope, napola, details in
+                    let updated = ScopaRound(
+                        id: round.id,
+                        roundNumber: round.roundNumber,
+                        primieraWinnerId: primiera,
+                        settebelloWinnerId: settebello,
+                        carteWinnerId: carte,
+                        denariWinnerId: denari,
+                        scopeScores: scope,
+                        napolaScores: napola,
+                        primieraDetails: details
+                    )
+                    onUpdate(updated)
+                    dismiss()
+                }
+            }
+        }
+    }
+    
+    private func detailRow(title: String, winnerId: UUID?) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            if let winnerId = winnerId, let player = game.players.first(where: { $0.id == winnerId }) {
+                Text(player.name)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.orange)
+            } else {
+                Text("Nessuno / Pareggio")
+                    .foregroundColor(.secondary)
             }
         }
     }

@@ -119,6 +119,9 @@ public struct CiccopaoloRound: Codable, Identifiable, Hashable {
     public var scopeScores: [UUID: Int] // Player.id -> count of scope
     public var extraScores: [UUID: Int] // Player.id -> count of extra points
     
+    // Detailed card selections for primiera
+    public var primieraDetails: [UUID: [String: Int]]?
+    
     enum CodingKeys: String, CodingKey {
         case id
         case roundNumber
@@ -129,6 +132,7 @@ public struct CiccopaoloRound: Codable, Identifiable, Hashable {
         case mazzoWinnerId // For backwards compatibility
         case scopeScores
         case extraScores
+        case primieraDetails
     }
     
     public init(
@@ -139,7 +143,8 @@ public struct CiccopaoloRound: Codable, Identifiable, Hashable {
         carteWinnerId: UUID? = nil,
         denariWinnerId: UUID? = nil,
         scopeScores: [UUID: Int] = [:],
-        extraScores: [UUID: Int] = [:]
+        extraScores: [UUID: Int] = [:],
+        primieraDetails: [UUID: [String: Int]]? = nil
     ) {
         self.id = id
         self.roundNumber = roundNumber
@@ -149,6 +154,7 @@ public struct CiccopaoloRound: Codable, Identifiable, Hashable {
         self.denariWinnerId = denariWinnerId
         self.scopeScores = scopeScores
         self.extraScores = extraScores
+        self.primieraDetails = primieraDetails
     }
     
     public init(from decoder: Decoder) throws {
@@ -168,6 +174,7 @@ public struct CiccopaoloRound: Codable, Identifiable, Hashable {
         
         scopeScores = try container.decode([UUID: Int].self, forKey: .scopeScores)
         extraScores = try container.decode([UUID: Int].self, forKey: .extraScores)
+        primieraDetails = try container.decodeIfPresent([UUID: [String: Int]].self, forKey: .primieraDetails)
     }
     
     public func encode(to encoder: Encoder) throws {
@@ -180,6 +187,7 @@ public struct CiccopaoloRound: Codable, Identifiable, Hashable {
         try container.encodeIfPresent(denariWinnerId, forKey: .denariWinnerId)
         try container.encode(scopeScores, forKey: .scopeScores)
         try container.encode(extraScores, forKey: .extraScores)
+        try container.encodeIfPresent(primieraDetails, forKey: .primieraDetails)
     }
     
     public func pointsForPlayer(id: UUID) -> Int {
@@ -261,6 +269,9 @@ public struct ScopaRound: Codable, Identifiable, Hashable {
     // Napoli / Napola extra points (if played)
     public var napolaScores: [UUID: Int] // Player.id -> Napola points (usually 3 to 10 points)
     
+    // Detailed card selections for primiera
+    public var primieraDetails: [UUID: [String: Int]]?
+    
     public init(
         id: UUID = UUID(),
         roundNumber: Int,
@@ -269,7 +280,8 @@ public struct ScopaRound: Codable, Identifiable, Hashable {
         carteWinnerId: UUID? = nil,
         denariWinnerId: UUID? = nil,
         scopeScores: [UUID: Int] = [:],
-        napolaScores: [UUID: Int] = [:]
+        napolaScores: [UUID: Int] = [:],
+        primieraDetails: [UUID: [String: Int]]? = nil
     ) {
         self.id = id
         self.roundNumber = roundNumber
@@ -279,6 +291,7 @@ public struct ScopaRound: Codable, Identifiable, Hashable {
         self.denariWinnerId = denariWinnerId
         self.scopeScores = scopeScores
         self.napolaScores = napolaScores
+        self.primieraDetails = primieraDetails
     }
     
     public func pointsForPlayer(id: UUID) -> Int {

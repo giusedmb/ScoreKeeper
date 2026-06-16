@@ -103,6 +103,9 @@ public class GameStore {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         do {
             let data = try Data(contentsOf: url)
+            if data.count == 4, let str = String(data: data, encoding: .utf8), str == "null" {
+                return nil
+            }
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             return try decoder.decode(type, from: data)
@@ -271,7 +274,8 @@ public class GameStore {
         carteWinnerId: UUID?,
         denariWinnerId: UUID?,
         scopeScores: [UUID: Int],
-        extraScores: [UUID: Int]
+        extraScores: [UUID: Int],
+        primieraDetails: [UUID: [String: Int]]? = nil
     ) {
         guard var game = ciccopaoloGame else { return }
         
@@ -283,7 +287,8 @@ public class GameStore {
             carteWinnerId: carteWinnerId,
             denariWinnerId: denariWinnerId,
             scopeScores: scopeScores,
-            extraScores: extraScores
+            extraScores: extraScores,
+            primieraDetails: primieraDetails
         )
         
         // Add round to rounds array
@@ -300,26 +305,28 @@ public class GameStore {
         let hasPlayerReachedTarget = game.players.contains(where: { $0.currentPartitionScore >= game.targetScore })
         
         if hasPlayerReachedTarget {
-            let score0 = game.players[0].currentPartitionScore
-            let score1 = game.players[1].currentPartitionScore
+            let scores = game.players.map { $0.currentPartitionScore }
+            let maxScore = scores.max() ?? 0
+            let winners = game.players.filter { $0.currentPartitionScore == maxScore }
             
-            if score0 != score1 {
-                let winnerIdx = score0 > score1 ? 0 : 1
-                game.players[winnerIdx].gameWins += 1
-                
-                // Archive current rounds into completedGamesRounds
-                game.completedGamesRounds.append(game.rounds)
-                game.rounds = []
-                
-                // Reset partition scores for next game (if any)
-                for j in 0..<game.players.count {
-                    game.players[j].currentPartitionScore = 0
-                }
-                
-                // Save to history if the match is finished!
-                let requiredWins = game.matchFormat == .bottaSecca ? 1 : 2
-                if game.players[winnerIdx].gameWins >= requiredWins {
-                    saveCompletedCiccopaoloGame(game: game)
+            if winners.count == 1, let winner = winners.first, maxScore >= game.targetScore {
+                if let winnerIdx = game.players.firstIndex(where: { $0.id == winner.id }) {
+                    game.players[winnerIdx].gameWins += 1
+                    
+                    // Archive current rounds into completedGamesRounds
+                    game.completedGamesRounds.append(game.rounds)
+                    game.rounds = []
+                    
+                    // Reset partition scores for next game (if any)
+                    for j in 0..<game.players.count {
+                        game.players[j].currentPartitionScore = 0
+                    }
+                    
+                    // Save to history if the match is finished!
+                    let requiredWins = game.matchFormat == .bottaSecca ? 1 : 2
+                    if game.players[winnerIdx].gameWins >= requiredWins {
+                        saveCompletedCiccopaoloGame(game: game)
+                    }
                 }
             }
         }
@@ -345,6 +352,51 @@ public class GameStore {
         
         self.ciccopaoloGame = game
         saveAll()
+    }
+    
+    public func updateCiccopaoloRound(updatedRound: CiccopaoloRound) {
+        guard var game = ciccopaoloGame else { return }
+        if let idx = game.rounds.firstIndex(where: { $0.id == updatedRound.id }) {
+            game.rounds[idx] = updatedRound
+            
+            // Recalculate current partition scores
+            for i in 0..<game.players.count {
+                let pid = game.players[i].id
+                game.players[i].currentPartitionScore = game.rounds.reduce(0) { $0 + $1.pointsForPlayer(id: pid) }
+            }
+            
+            // Check if game (partita) is finished
+            let hasPlayerReachedTarget = game.players.contains(where: { $0.currentPartitionScore >= game.targetScore })
+            if hasPlayerReachedTarget {
+                let scores = game.players.map { $0.currentPartitionScore }
+                let maxScore = scores.max() ?? 0
+                let winners = game.players.filter { $0.currentPartitionScore == maxScore }
+                
+                if winners.count == 1, let winner = winners.first, maxScore >= game.targetScore {
+                    if let winnerIdx = game.players.firstIndex(where: { $0.id == winner.id }) {
+                        game.players[winnerIdx].gameWins += 1
+                        
+                        // Archive current rounds into completedGamesRounds
+                        game.completedGamesRounds.append(game.rounds)
+                        game.rounds = []
+                        
+                        // Reset partition scores
+                        for j in 0..<game.players.count {
+                            game.players[j].currentPartitionScore = 0
+                        }
+                        
+                        // Save to history if the match is finished
+                        let requiredWins = game.matchFormat == .bottaSecca ? 1 : 2
+                        if game.players[winnerIdx].gameWins >= requiredWins {
+                            saveCompletedCiccopaoloGame(game: game)
+                        }
+                    }
+                }
+            }
+            
+            self.ciccopaoloGame = game
+            saveAll()
+        }
     }
     
     public func resetCiccopaoloGame() {
@@ -396,14 +448,9 @@ public class GameStore {
         let participantIds = game.players.map { $0.id }
         
         // Find overall winner based on gameWins
-        let winnerId: UUID?
-        let wins0 = game.players[0].gameWins
-        let wins1 = game.players[1].gameWins
-        if wins0 == wins1 {
-            winnerId = nil
-        } else {
-            winnerId = wins0 > wins1 ? participantIds[0] : participantIds[1]
-        }
+        let maxWins = game.players.map { $0.gameWins }.max() ?? 0
+        let winners = game.players.filter { $0.gameWins == maxWins }
+        let winnerId: UUID? = winners.count == 1 ? winners[0].id : nil
         
         var historyRounds: [Round] = []
         var roundCounter = 1
@@ -414,9 +461,11 @@ public class GameStore {
                 for pId in participantIds {
                     scores[pId] = cpRound.pointsForPlayer(id: pId)
                 }
-                let pts0 = cpRound.pointsForPlayer(id: participantIds[0])
-                let pts1 = cpRound.pointsForPlayer(id: participantIds[1])
-                let roundWinner = pts0 == pts1 ? nil : (pts0 > pts1 ? participantIds[0] : participantIds[1])
+                
+                // Find round winner (highest score, unique)
+                let maxPts = participantIds.map { cpRound.pointsForPlayer(id: $0) }.max() ?? 0
+                let roundWinners = participantIds.filter { cpRound.pointsForPlayer(id: $0) == maxPts }
+                let roundWinner = roundWinners.count == 1 ? roundWinners[0] : nil
                 
                 let hRound = Round(roundNumber: roundCounter, scores: scores, winnerId: roundWinner)
                 historyRounds.append(hRound)
@@ -440,7 +489,8 @@ public class GameStore {
         carteWinnerId: UUID?,
         denariWinnerId: UUID?,
         scopeScores: [UUID: Int],
-        napolaScores: [UUID: Int]
+        napolaScores: [UUID: Int],
+        primieraDetails: [UUID: [String: Int]]? = nil
     ) {
         guard var game = scopaGame else { return }
         
@@ -452,7 +502,8 @@ public class GameStore {
             carteWinnerId: carteWinnerId,
             denariWinnerId: denariWinnerId,
             scopeScores: scopeScores,
-            napolaScores: napolaScores
+            napolaScores: napolaScores,
+            primieraDetails: primieraDetails
         )
         
         game.rounds.append(newRound)
@@ -486,6 +537,25 @@ public class GameStore {
         
         self.scopaGame = game
         saveAll()
+    }
+    
+    public func updateScopaRound(updatedRound: ScopaRound) {
+        guard var game = scopaGame else { return }
+        if let idx = game.rounds.firstIndex(where: { $0.id == updatedRound.id }) {
+            game.rounds[idx] = updatedRound
+            
+            for i in 0..<game.players.count {
+                let pid = game.players[i].id
+                game.players[i].currentScore = game.rounds.reduce(0) { $0 + $1.pointsForPlayer(id: pid) }
+            }
+            
+            if game.isFinished {
+                saveCompletedScopaGame(game: game)
+            }
+            
+            self.scopaGame = game
+            saveAll()
+        }
     }
     
     public func resetScopaGame() {

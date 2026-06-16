@@ -30,6 +30,7 @@ struct CiccopaoloView: View {
     @State private var showingResetAlert = false
     @State private var showingExitAlert = false
     @State private var activeCelebration: CiccopaoloCelebrationState = .none
+    @State private var selectedRoundForDetail: CiccopaoloRound? = nil
     
     var body: some View {
         ZStack {
@@ -65,7 +66,7 @@ struct CiccopaoloView: View {
         .navigationTitle("Ciccopaolo")
         .sheet(isPresented: $showingAddRoundSheet) {
             if let game = store.ciccopaoloGame {
-                CiccopaoloAddRoundSheet(game: game) { primiera, settebello, carte, denari, scope, extra in
+                CiccopaoloAddRoundSheet(game: game) { primiera, settebello, carte, denari, scope, extra, details in
                     // Call save round
                     store.saveCiccopaoloRound(
                         primieraWinnerId: primiera,
@@ -73,7 +74,8 @@ struct CiccopaoloView: View {
                         carteWinnerId: carte,
                         denariWinnerId: denari,
                         scopeScores: scope,
-                        extraScores: extra
+                        extraScores: extra,
+                        primieraDetails: details
                     )
                     
                     // Immediately check if game/match was won, to show celebration
@@ -84,8 +86,6 @@ struct CiccopaoloView: View {
                             // Match finished!
                             let pWins = updatedGame.players.map { ($0.name, $0.gameWins) }
                             
-                            // To show final game scores, we need the scores of the last completed game.
-                            // We can fetch from completedGamesRounds last element
                             var finalScores: [(name: String, score: Int)] = []
                             if let lastRounds = updatedGame.completedGamesRounds.last {
                                 for player in updatedGame.players {
@@ -104,19 +104,17 @@ struct CiccopaoloView: View {
                             )
                             triggerGameWinHaptics()
                         } else {
-                            // Check if a partition/game just finished (it resets players' current scores to 0, and increments gameWins).
-                            // So if a gameWin occurred, but no matchWinner yet (meaning in best-of-3, one is at 1 win, other is at 0 or 1),
-                            // we show game won celebration, but with isMatchFinished: false.
-                            // We detect this if a game was just archived in completedGamesRounds and rounds count is 0.
                             if updatedGame.rounds.isEmpty, let lastRounds = updatedGame.completedGamesRounds.last {
                                 // Find who won this game by calculating points from lastRounds
-                                let player0 = updatedGame.players[0]
-                                let player1 = updatedGame.players[1]
-                                let pts0 = lastRounds.reduce(0) { $0 + $1.pointsForPlayer(id: player0.id) }
-                                let pts1 = lastRounds.reduce(0) { $0 + $1.pointsForPlayer(id: player1.id) }
+                                var playerScores: [(player: CiccopaoloPlayer, score: Int)] = []
+                                for player in updatedGame.players {
+                                    let score = lastRounds.reduce(0) { $0 + $1.pointsForPlayer(id: player.id) }
+                                    playerScores.append((player, score))
+                                }
                                 
-                                let gameWinnerName = pts0 > pts1 ? player0.name : player1.name
-                                let finalScores = [(player0.name, pts0), (player1.name, pts1)]
+                                let gameWinner = playerScores.max(by: { $0.score < $1.score })?.player
+                                let gameWinnerName = gameWinner?.name ?? "Nessuno"
+                                let finalScores = playerScores.map { ($0.player.name, $0.score) }
                                 let pWins = updatedGame.players.map { ($0.name, $0.gameWins) }
                                 
                                 activeCelebration = .gameWon(
@@ -129,6 +127,13 @@ struct CiccopaoloView: View {
                             }
                         }
                     }
+                }
+            }
+        }
+        .sheet(item: $selectedRoundForDetail) { round in
+            if let game = store.ciccopaoloGame {
+                CiccopaoloRoundDetailSheet(round: round, game: game) { updatedRound in
+                    store.updateCiccopaoloRound(updatedRound: updatedRound)
                 }
             }
         }
@@ -265,10 +270,9 @@ struct CiccopaoloView: View {
                             if isSelected {
                                 selectedPlayerIds.remove(player.id)
                             } else {
-                                if selectedPlayerIds.count < 2 {
+                                if selectedPlayerIds.count < 3 {
                                     selectedPlayerIds.insert(player.id)
                                 } else {
-                                    // Replace one if we already have 2 selected
                                     if let first = selectedPlayerIds.first {
                                         selectedPlayerIds.remove(first)
                                     }
@@ -279,7 +283,7 @@ struct CiccopaoloView: View {
                     }
                 }
             } header: {
-                Text("Seleziona Partecipanti (Esattamente 2)")
+                Text("Seleziona Partecipanti (2 o 3)")
             }
             .listRowBackground(Color.cardBackground)
             
@@ -294,8 +298,8 @@ struct CiccopaoloView: View {
                         .fontWeight(.bold)
                         .foregroundColor(.white)
                 }
-                .disabled(selectedPlayerIds.count != 2)
-                .listRowBackground(selectedPlayerIds.count == 2 ? Color.appAccent : Color.cardBackground.opacity(0.5))
+                .disabled(selectedPlayerIds.count < 2 || selectedPlayerIds.count > 3)
+                .listRowBackground((selectedPlayerIds.count >= 2 && selectedPlayerIds.count <= 3) ? Color.appAccent : Color.cardBackground.opacity(0.5))
             }
         }
         .scrollContentBackground(.hidden)
@@ -342,55 +346,36 @@ struct CiccopaoloView: View {
             // Score Board Card
             VStack(spacing: 16) {
                 HStack(spacing: 0) {
-                    // Player 1
-                    VStack(spacing: 6) {
-                        Text(game.players[0].name)
-                            .font(.headline)
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                        
-                        Text("\(game.players[0].currentPartitionScore)")
-                            .font(.system(size: 48, weight: .bold, design: .rounded))
-                            .foregroundColor(.primary)
-                        
-                        HStack(spacing: 4) {
-                            Text("Partite Vinte:")
-                                .font(.caption)
+                    ForEach(game.players.indices, id: \.self) { idx in
+                        let player = game.players[idx]
+                        VStack(spacing: 6) {
+                            Text(player.name)
+                                .font(.headline)
                                 .foregroundColor(.secondary)
-                            Text("\(game.players[0].gameWins) 🏆")
-                                .font(.caption.bold())
-                                .foregroundColor(.trophyGold)
+                                .lineLimit(1)
+                            
+                            Text("\(player.currentPartitionScore)")
+                                .font(.system(size: game.players.count > 2 ? 34 : 48, weight: .bold, design: .rounded))
+                                .foregroundColor(.primary)
+                            
+                            HStack(spacing: 4) {
+                                Text("Vinte:")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                Text("\(player.gameWins) 🏆")
+                                    .font(.caption.bold())
+                                    .foregroundColor(.trophyGold)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        
+                        if idx < game.players.count - 1 {
+                            Rectangle()
+                                .fill(Color.cardStroke)
+                                .frame(width: 1)
+                                .padding(.vertical, 10)
                         }
                     }
-                    .frame(maxWidth: .infinity)
-                    
-                    // Divider
-                    Rectangle()
-                        .fill(Color.cardStroke)
-                        .frame(width: 1)
-                        .padding(.vertical, 10)
-                    
-                    // Player 2
-                    VStack(spacing: 6) {
-                        Text(game.players[1].name)
-                            .font(.headline)
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                        
-                        Text("\(game.players[1].currentPartitionScore)")
-                            .font(.system(size: 48, weight: .bold, design: .rounded))
-                            .foregroundColor(.primary)
-                        
-                        HStack(spacing: 4) {
-                            Text("Partite Vinte:")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Text("\(game.players[1].gameWins) 🏆")
-                                .font(.caption.bold())
-                                .foregroundColor(.trophyGold)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
                 }
                 .padding(.vertical, 16)
             }
@@ -431,6 +416,11 @@ struct CiccopaoloView: View {
                                     if let idx = game.rounds.firstIndex(where: { $0.id == round.id }) {
                                         store.deleteCiccopaoloRound(at: IndexSet(integer: idx))
                                     }
+                                }
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    triggerHaptic(.impact(.light))
+                                    selectedRoundForDetail = round
                                 }
                             }
                         }
@@ -536,23 +526,25 @@ struct CiccopaoloRoundHistoryRow: View {
                 pointBadge(label: "Denari", winnerId: round.denariWinnerId)
             }
             
-            // Show scope and extra points if any
-            let p0 = game.players[0]
-            let p1 = game.players[1]
-            let sc0 = round.scopeScores[p0.id] ?? 0
-            let sc1 = round.scopeScores[p1.id] ?? 0
-            let ex0 = round.extraScores[p0.id] ?? 0
-            let ex1 = round.extraScores[p1.id] ?? 0
+            // Show scope and extra points if any (dynamic for 2 or 3 players)
+            let scopeTexts = game.players.compactMap { player -> String? in
+                let sc = round.scopeScores[player.id] ?? 0
+                return sc > 0 ? "\(player.name) (\(sc))" : nil
+            }
+            let extraTexts = game.players.compactMap { player -> String? in
+                let ex = round.extraScores[player.id] ?? 0
+                return ex > 0 ? "\(player.name) (+\(ex))" : nil
+            }
             
-            if sc0 > 0 || sc1 > 0 || ex0 > 0 || ex1 > 0 {
-                HStack(spacing: 12) {
-                    if sc0 > 0 || sc1 > 0 {
-                        Text("Scope: \(p0.name) (\(sc0)) - \(p1.name) (\(sc1))")
+            if !scopeTexts.isEmpty || !extraTexts.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    if !scopeTexts.isEmpty {
+                        Text("Scope: \(scopeTexts.joined(separator: " - "))")
                             .font(.caption2)
                             .foregroundColor(.secondary)
                     }
-                    if ex0 > 0 || ex1 > 0 {
-                        Text("Extra: \(p0.name) (+\(ex0)) - \(p1.name) (+\(ex1))")
+                    if !extraTexts.isEmpty {
+                        Text("Extra: \(extraTexts.joined(separator: " - "))")
                             .font(.caption2)
                             .foregroundColor(.secondary)
                     }
@@ -598,7 +590,8 @@ struct CiccopaoloRoundHistoryRow: View {
 struct CiccopaoloAddRoundSheet: View {
     @Environment(\.dismiss) private var dismiss
     let game: CiccopaoloGame
-    let onSave: (UUID?, UUID?, UUID?, UUID?, [UUID: Int], [UUID: Int]) -> Void
+    let roundToEdit: CiccopaoloRound?
+    let onSave: (UUID?, UUID?, UUID?, UUID?, [UUID: Int], [UUID: Int], [UUID: [String: Int]]?) -> Void
     
     // Selections
     @State private var primieraWinnerId: UUID? = nil
@@ -610,21 +603,36 @@ struct CiccopaoloAddRoundSheet: View {
     @State private var scopeScores: [UUID: Int] = [:]
     @State private var extraScores: [UUID: Int] = [:]
     
+    // Primiera Details
+    @State private var primieraDetails: [UUID: [String: Int]]? = nil
+    
     @State private var showingPrimieraCalculator = false
     
-    init(game: CiccopaoloGame, onSave: @escaping (UUID?, UUID?, UUID?, UUID?, [UUID: Int], [UUID: Int]) -> Void) {
+    init(game: CiccopaoloGame, roundToEdit: CiccopaoloRound? = nil, onSave: @escaping (UUID?, UUID?, UUID?, UUID?, [UUID: Int], [UUID: Int], [UUID: [String: Int]]?) -> Void) {
         self.game = game
+        self.roundToEdit = roundToEdit
         self.onSave = onSave
         
-        // Initialize dictionaries
-        var tempScopes: [UUID: Int] = [:]
-        var tempExtras: [UUID: Int] = [:]
-        for p in game.players {
-            tempScopes[p.id] = 0
-            tempExtras[p.id] = 0
+        if let round = roundToEdit {
+            _primieraWinnerId = State(initialValue: round.primieraWinnerId)
+            _settebelloWinnerId = State(initialValue: round.settebelloWinnerId)
+            _carteWinnerId = State(initialValue: round.carteWinnerId)
+            _denariWinnerId = State(initialValue: round.denariWinnerId)
+            _scopeScores = State(initialValue: round.scopeScores)
+            _extraScores = State(initialValue: round.extraScores)
+            _primieraDetails = State(initialValue: round.primieraDetails)
+        } else {
+            // Initialize dictionaries
+            var tempScopes: [UUID: Int] = [:]
+            var tempExtras: [UUID: Int] = [:]
+            for p in game.players {
+                tempScopes[p.id] = 0
+                tempExtras[p.id] = 0
+            }
+            _scopeScores = State(initialValue: tempScopes)
+            _extraScores = State(initialValue: tempExtras)
+            _primieraDetails = State(initialValue: nil)
         }
-        _scopeScores = State(initialValue: tempScopes)
-        _extraScores = State(initialValue: tempExtras)
     }
     
     var body: some View {
@@ -707,7 +715,7 @@ struct CiccopaoloAddRoundSheet: View {
                                     }
                                 }
                                 .padding(.vertical, 10)
-                                if player.id == game.players[0].id {
+                                if player.id != game.players.last?.id {
                                     Divider().background(Color.cardStroke)
                                 }
                             }
@@ -772,7 +780,7 @@ struct CiccopaoloAddRoundSheet: View {
                                     }
                                 }
                                 .padding(.vertical, 10)
-                                if player.id == game.players[0].id {
+                                if player.id != game.players.last?.id {
                                     Divider().background(Color.cardStroke)
                                 }
                             }
@@ -784,7 +792,7 @@ struct CiccopaoloAddRoundSheet: View {
                         .padding(.horizontal)
                     }
                     
-                    // Live Preview of Round Score
+                    // Live Preview of Round Score (dynamic for 2 or 3 players)
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Anteprima Punti Round")
                             .font(.caption.bold())
@@ -792,36 +800,28 @@ struct CiccopaoloAddRoundSheet: View {
                             .tracking(1)
                             .padding(.horizontal)
                         
-                        let p0 = game.players[0]
-                        let p1 = game.players[1]
-                        let tot0 = calculateRoundTotal(for: p0.id)
-                        let tot1 = calculateRoundTotal(for: p1.id)
-                        
                         HStack {
-                            VStack(spacing: 4) {
-                                Text(p0.name)
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                                Text("+\(tot0)")
-                                    .font(.title2.bold())
-                                    .foregroundColor(.scorePositive)
+                            ForEach(game.players.indices, id: \.self) { idx in
+                                let player = game.players[idx]
+                                let tot = calculateRoundTotal(for: player.id)
+                                VStack(spacing: 4) {
+                                    Text(player.name)
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
+                                    Text("+\(tot)")
+                                        .font(.title2.bold())
+                                        .foregroundColor(.scorePositive)
+                                }
+                                .frame(maxWidth: .infinity)
+                                
+                                if idx < game.players.count - 1 {
+                                    Rectangle()
+                                        .fill(Color.cardStroke)
+                                        .frame(width: 1)
+                                        .padding(.vertical, 5)
+                                }
                             }
-                            .frame(maxWidth: .infinity)
-                            
-                            Rectangle()
-                                .fill(Color.cardStroke)
-                                .frame(width: 1)
-                                .padding(.vertical, 5)
-                            
-                            VStack(spacing: 4) {
-                                Text(p1.name)
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                                Text("+\(tot1)")
-                                    .font(.title2.bold())
-                                    .foregroundColor(.scorePositive)
-                            }
-                            .frame(maxWidth: .infinity)
                         }
                         .padding()
                         .background(Color.cardBackground)
@@ -838,11 +838,12 @@ struct CiccopaoloAddRoundSheet: View {
                             carteWinnerId,
                             denariWinnerId,
                             scopeScores,
-                            extraScores
+                            extraScores,
+                            primieraDetails
                         )
                         dismiss()
                     }) {
-                        Text("Salva Round")
+                        Text(roundToEdit == nil ? "Salva Round" : "Salva Modifiche")
                             .font(.headline.bold())
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
@@ -857,7 +858,7 @@ struct CiccopaoloAddRoundSheet: View {
             }
             .scrollContentBackground(.hidden)
             .background(Color.appBackground)
-            .navigationTitle("Registra Punti Smazzata")
+            .navigationTitle(roundToEdit == nil ? "Registra Punti Smazzata" : "Modifica Smazzata \(roundToEdit!.roundNumber)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -873,9 +874,11 @@ struct CiccopaoloAddRoundSheet: View {
             PrimieraCalculatorView(
                 players: primieraPlayers,
                 currentWinnerId: primieraWinnerId,
-                settebelloWinnerId: settebelloWinnerId
-            ) { winnerId in
+                settebelloWinnerId: settebelloWinnerId,
+                initialSelections: primieraDetails
+            ) { winnerId, details in
                 primieraWinnerId = winnerId
+                primieraDetails = details
             }
         }
     }
@@ -921,32 +924,38 @@ struct CiccopaoloAddRoundSheet: View {
                 }
             }
             
+            // Dynamic number of buttons for 2 or 3 players + Nessuno
             HStack(spacing: 8) {
-                // Player 0
-                let p0 = game.players[0]
-                Button(action: {
-                    triggerHaptic(.impact(.light))
-                    if selection.wrappedValue == p0.id {
-                        selection.wrappedValue = nil
-                    } else {
-                        selection.wrappedValue = p0.id
+                ForEach(game.players) { player in
+                    Button(action: {
+                        triggerHaptic(.impact(.light))
+                        if selection.wrappedValue == player.id {
+                            selection.wrappedValue = nil
+                        } else {
+                            selection.wrappedValue = player.id
+                        }
+                        if title == "Primiera" {
+                            primieraDetails = nil
+                        }
+                    }) {
+                        Text(player.name)
+                            .font(.caption.bold())
+                            .foregroundColor(selection.wrappedValue == player.id ? .white : .secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(selection.wrappedValue == player.id ? Color.appAccent : Color.white.opacity(0.04))
+                            .cornerRadius(8)
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(selection.wrappedValue == player.id ? Color.appAccent : Color.cardStroke, lineWidth: 1))
                     }
-                }) {
-                    Text(p0.name)
-                        .font(.caption.bold())
-                        .foregroundColor(selection.wrappedValue == p0.id ? .white : .secondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(selection.wrappedValue == p0.id ? Color.appAccent : Color.white.opacity(0.04))
-                        .cornerRadius(8)
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(selection.wrappedValue == p0.id ? Color.appAccent : Color.cardStroke, lineWidth: 1))
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
                 
-                // Nessuno / Tie
                 Button(action: {
                     triggerHaptic(.impact(.light))
                     selection.wrappedValue = nil
+                    if title == "Primiera" {
+                        primieraDetails = nil
+                    }
                 }) {
                     Text("Nessuno")
                         .font(.caption.bold())
@@ -956,27 +965,6 @@ struct CiccopaoloAddRoundSheet: View {
                         .background(selection.wrappedValue == nil ? Color.secondary.opacity(0.3) : Color.white.opacity(0.04))
                         .cornerRadius(8)
                         .overlay(RoundedRectangle(cornerRadius: 8).stroke(selection.wrappedValue == nil ? Color.secondary.opacity(0.4) : Color.cardStroke, lineWidth: 1))
-                }
-                .buttonStyle(.plain)
-                
-                // Player 1
-                let p1 = game.players[1]
-                Button(action: {
-                    triggerHaptic(.impact(.light))
-                    if selection.wrappedValue == p1.id {
-                        selection.wrappedValue = nil
-                    } else {
-                        selection.wrappedValue = p1.id
-                    }
-                }) {
-                    Text(p1.name)
-                        .font(.caption.bold())
-                        .foregroundColor(selection.wrappedValue == p1.id ? .white : .secondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(selection.wrappedValue == p1.id ? Color.appAccent : Color.white.opacity(0.04))
-                        .cornerRadius(8)
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(selection.wrappedValue == p1.id ? Color.appAccent : Color.cardStroke, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
             }
@@ -1050,14 +1038,16 @@ struct CiccopaoloCelebrationOverlay: View {
                         .padding(.horizontal)
                     
                     // Final game points
-                    if scores.count == 2 {
+                    if !scores.isEmpty {
                         VStack(spacing: 4) {
                             Text("PUNTEGGI PARTITA")
                                 .font(.caption.bold())
                                 .foregroundColor(.secondary)
-                            Text("\(scores[0].name) \(scores[0].score)  -  \(scores[1].score) \(scores[1].name)")
+                            let scoresText = scores.map { "\($0.name) \($0.score)" }.joined(separator: "  -  ")
+                            Text(scoresText)
                                 .font(.headline.bold())
                                 .foregroundColor(.primary)
+                                .multilineTextAlignment(.center)
                         }
                         .padding(.vertical, 8)
                         .padding(.horizontal, 16)
@@ -1065,7 +1055,7 @@ struct CiccopaoloCelebrationOverlay: View {
                         .cornerRadius(10)
                     }
                     
-                    // Current total wins progress
+                    // Current total wins progress (supported for any player count)
                     VStack(alignment: .leading, spacing: 8) {
                         Text("STATO DEL MATCH")
                             .font(.caption.bold())
@@ -1125,6 +1115,191 @@ struct CiccopaoloCelebrationOverlay: View {
             }
             withAnimation(.linear(duration: 2.0).repeatForever(autoreverses: false)) {
                 rotate = 360.0
+            }
+        }
+    }
+}
+
+
+// MARK: - CICCOPAOLO ROUND DETAIL SHEET
+struct CiccopaoloRoundDetailSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let round: CiccopaoloRound
+    let game: CiccopaoloGame
+    let onUpdate: (CiccopaoloRound) -> Void
+    
+    @State private var showingEditSheet = false
+    
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    HStack {
+                        Text("Smazzata")
+                        Spacer()
+                        Text("\(round.roundNumber)")
+                            .fontWeight(.bold)
+                    }
+                } header: {
+                    Text("Informazioni Generali")
+                }
+                .listRowBackground(Color.cardBackground)
+                
+                Section {
+                    ForEach(game.players) { player in
+                        let pts = round.pointsForPlayer(id: player.id)
+                        HStack {
+                            Text(player.name)
+                            Spacer()
+                            Text("+\(pts) pt")
+                                .fontWeight(.bold)
+                                .foregroundColor(pts > 0 ? .scorePositive : .secondary)
+                        }
+                    }
+                } header: {
+                    Text("Punti Round Totali")
+                }
+                .listRowBackground(Color.cardBackground)
+                
+                Section {
+                    detailRow(title: "Primiera", winnerId: round.primieraWinnerId)
+                    detailRow(title: "Settebello", winnerId: round.settebelloWinnerId)
+                    detailRow(title: "Carte", winnerId: round.carteWinnerId)
+                    detailRow(title: "Denari", winnerId: round.denariWinnerId)
+                } header: {
+                    Text("Punti Classici")
+                }
+                .listRowBackground(Color.cardBackground)
+                
+                Section {
+                    ForEach(game.players) { player in
+                        let sc = round.scopeScores[player.id] ?? 0
+                        HStack {
+                            Text(player.name)
+                            Spacer()
+                            Text("\(sc) Scope")
+                                .foregroundColor(sc > 0 ? .appAccent : .secondary)
+                        }
+                    }
+                } header: {
+                    Text("Scope")
+                }
+                .listRowBackground(Color.cardBackground)
+                
+                if game.players.contains(where: { (round.extraScores[$0.id] ?? 0) > 0 }) {
+                    Section {
+                        ForEach(game.players) { player in
+                            let ex = round.extraScores[player.id] ?? 0
+                            HStack {
+                                Text(player.name)
+                                Spacer()
+                                Text("+\(ex) pt")
+                                    .foregroundColor(ex > 0 ? .appAccent : .secondary)
+                            }
+                        }
+                    } header: {
+                        Text("Punti Extra")
+                    }
+                    .listRowBackground(Color.cardBackground)
+                }
+                
+                // Primiera Details section!
+                if let details = round.primieraDetails {
+                    Section {
+                        ForEach(game.players) { player in
+                            if let playerDetails = details[player.id], !playerDetails.isEmpty {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(player.name)
+                                        .font(.subheadline.bold())
+                                        .foregroundColor(.appAccent)
+                                    
+                                    ForEach(PrimieraSuit.allCases) { suit in
+                                        if let rankVal = playerDetails[suit.rawValue],
+                                           let rank = PrimieraCardRank(rawValue: rankVal) {
+                                            HStack {
+                                                Text("\(suit.icon) \(suit.rawValue)")
+                                                    .font(.caption)
+                                                    .foregroundColor(.secondary)
+                                                Spacer()
+                                                Text("\(rank.displayName) (\(rank.primieraPoints) pt)")
+                                                    .font(.caption.bold())
+                                                    .foregroundColor(.primary)
+                                            }
+                                        }
+                                    }
+                                }
+                                .padding(.vertical, 4)
+                            }
+                        }
+                    } header: {
+                        Text("Dettaglio Carte Primiera")
+                    }
+                    .listRowBackground(Color.cardBackground)
+                } else {
+                    Section {
+                        HStack {
+                            Text("Dettagli non disponibili")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text("Calcolata a mano")
+                                .font(.caption.bold())
+                                .foregroundColor(.secondary.opacity(0.7))
+                        }
+                    } header: {
+                        Text("Dettaglio Carte Primiera")
+                    }
+                    .listRowBackground(Color.cardBackground)
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(Color.appBackground)
+            .navigationTitle("Dettaglio Smazzata \(round.roundNumber)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Chiudi") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Modifica") {
+                        showingEditSheet = true
+                    }
+                    .foregroundColor(.appAccent)
+                }
+            }
+            .sheet(isPresented: $showingEditSheet) {
+                CiccopaoloAddRoundSheet(game: game, roundToEdit: round) { primiera, settebello, carte, denari, scope, extra, details in
+                    let updated = CiccopaoloRound(
+                        id: round.id,
+                        roundNumber: round.roundNumber,
+                        primieraWinnerId: primiera,
+                        settebelloWinnerId: settebello,
+                        carteWinnerId: carte,
+                        denariWinnerId: denari,
+                        scopeScores: scope,
+                        extraScores: extra,
+                        primieraDetails: details
+                    )
+                    onUpdate(updated)
+                    dismiss()
+                }
+            }
+        }
+    }
+    
+    private func detailRow(title: String, winnerId: UUID?) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            if let winnerId = winnerId, let player = game.players.first(where: { $0.id == winnerId }) {
+                Text(player.name)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.appAccent)
+            } else {
+                Text("Nessuno / Pareggio")
+                    .foregroundColor(.secondary)
             }
         }
     }
