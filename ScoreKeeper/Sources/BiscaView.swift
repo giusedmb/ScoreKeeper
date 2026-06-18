@@ -299,6 +299,7 @@ struct BiscaView: View {
                         BiscaPlayerCard(
                             player: player,
                             maxLives: game.maxLives,
+                            alivePlayers: game.players.filter { !$0.isEliminated },
                             onIncrement: {
                                 triggerHaptic(.impact(.light))
                                 store.updateBiscaLives(playerId: player.id, by: 1)
@@ -311,6 +312,10 @@ struct BiscaView: View {
                                     triggerHaptic(.impact(.light))
                                 }
                                 store.updateBiscaLives(playerId: player.id, by: -1)
+                            },
+                            onResurrect: { donor in
+                                triggerHaptic(.notification(.success))
+                                store.donateBiscaLife(from: donor.id, to: player.id)
                             }
                         )
                         .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
@@ -367,8 +372,10 @@ struct BiscaView: View {
 struct BiscaPlayerCard: View {
     let player: BiscaPlayer
     let maxLives: Int
+    let alivePlayers: [BiscaPlayer]
     let onIncrement: () -> Void
     let onDecrement: () -> Void
+    let onResurrect: (BiscaPlayer) -> Void
     
     var body: some View {
         HStack(spacing: 16) {
@@ -424,21 +431,42 @@ struct BiscaPlayerCard: View {
             // Increment/Decrement controls
             HStack(spacing: 14) {
                 if player.isEliminated {
-                    // Revive button
-                    Button(action: onIncrement) {
+                    if alivePlayers.isEmpty {
                         HStack(spacing: 4) {
-                            Image(systemName: "plus")
-                            Text("Riattiva")
+                            Image(systemName: "heart.slash")
+                            Text("No Donatori")
                         }
                         .font(.caption.bold())
-                        .foregroundColor(.scorePositive)
+                        .foregroundColor(.secondary)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
-                        .background(Color.scorePositive.opacity(0.12))
+                        .background(Color.secondary.opacity(0.12))
                         .cornerRadius(8)
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.scorePositive.opacity(0.2), lineWidth: 1))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.2), lineWidth: 1))
+                    } else {
+                        Menu {
+                            ForEach(alivePlayers) { donor in
+                                Button(action: {
+                                    onResurrect(donor)
+                                }) {
+                                    Label("Prendi da \(donor.name) (\(donor.lives) \(donor.lives == 1 ? "vita" : "vite"))", systemName: "heart.fill")
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "heart.text.square")
+                                Text("Resuscita")
+                            }
+                            .font(.caption.bold())
+                            .foregroundColor(.scorePositive)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color.scorePositive.opacity(0.12))
+                            .cornerRadius(8)
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.scorePositive.opacity(0.2), lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 } else {
                     // Regular live controls
                     Button(action: onDecrement) {

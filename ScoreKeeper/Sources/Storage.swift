@@ -242,6 +242,28 @@ public class GameStore {
         }
     }
     
+    public func donateBiscaLife(from donorId: UUID, to recipientId: UUID) {
+        guard var game = biscaGame else { return }
+        if let donorIndex = game.players.firstIndex(where: { $0.id == donorId }),
+           let recipientIndex = game.players.firstIndex(where: { $0.id == recipientId }) {
+            
+            // Donor must have lives > 0 and recipient must have lives == 0
+            guard game.players[donorIndex].lives > 0 else { return }
+            guard game.players[recipientIndex].lives == 0 else { return }
+            
+            game.players[donorIndex].lives -= 1
+            game.players[recipientIndex].lives += 1
+            self.biscaGame = game
+            saveAll()
+            
+            // Check if there is now exactly one survivor (in case the donor dies and nobody else remains)
+            let survivors = game.players.filter { !$0.isEliminated }
+            if survivors.count == 1 {
+                saveCompletedBiscaGame()
+            }
+        }
+    }
+    
     public func endBiscaGame() {
         self.biscaGame = nil
         saveAll()
