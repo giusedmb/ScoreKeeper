@@ -449,7 +449,7 @@ struct BiscaPlayerCard: View {
                                 Button(action: {
                                     onResurrect(donor)
                                 }) {
-                                    Label("Prendi da \(donor.name) (\(donor.lives) \(donor.lives == 1 ? "vita" : "vite"))", systemName: "heart.fill")
+                                    Label("Prendi da \(donor.name) (\(donor.lives) \(donor.lives == 1 ? "vita" : "vite"))", systemImage: "heart.fill")
                                 }
                             }
                         } label: {
