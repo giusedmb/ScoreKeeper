@@ -370,10 +370,30 @@ struct CiccopaoloView: View {
                         .frame(maxWidth: .infinity)
                         
                         if idx < game.players.count - 1 {
-                            Rectangle()
-                                .fill(Color.cardStroke)
-                                .frame(width: 1)
-                                .padding(.vertical, 10)
+                            // Divider with Swap Button
+                            ZStack {
+                                Rectangle()
+                                    .fill(Color.cardStroke)
+                                    .frame(width: 1)
+                                    .padding(.vertical, 10)
+                                
+                                Button(action: {
+                                    triggerHaptic(.impact(.light))
+                                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                                        store.swapCiccopaoloPlayers(from: idx, to: idx + 1)
+                                    }
+                                }) {
+                                    Image(systemName: "arrow.left.and.right")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundColor(.white)
+                                        .padding(8)
+                                        .background(Color.appAccent)
+                                        .clipShape(Circle())
+                                        .shadow(color: Color.black.opacity(0.3), radius: 3, x: 0, y: 2)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .frame(width: 36)
                         }
                     }
                 }
@@ -737,49 +757,94 @@ struct CiccopaoloAddRoundSheet: View {
                         
                         VStack(spacing: 0) {
                             ForEach(game.players) { player in
-                                HStack {
-                                    Text(player.name)
-                                        .font(.body.bold())
-                                        .foregroundColor(.primary)
-                                    Spacer()
+                                VStack(alignment: .leading, spacing: 10) {
+                                    HStack {
+                                        Text(player.name)
+                                            .font(.body.bold())
+                                            .foregroundColor(.primary)
+                                        Spacer()
+                                        
+                                        HStack(spacing: 14) {
+                                            Button(action: {
+                                                triggerHaptic(.impact(.light))
+                                                let current = extraScores[player.id] ?? 0
+                                                extraScores[player.id] = max(0, current - 1)
+                                            }) {
+                                                Image(systemName: "minus")
+                                                    .font(.caption.bold())
+                                                    .foregroundColor(.scoreNegative)
+                                                    .frame(width: 36, height: 36)
+                                                    .background(Color.scoreNegative.opacity(0.12))
+                                                    .clipShape(Circle())
+                                            }
+                                            .buttonStyle(.plain)
+                                            
+                                            Text("\(extraScores[player.id] ?? 0)")
+                                                .font(.title3.bold())
+                                                .foregroundColor(.primary)
+                                                .frame(width: 30)
+                                                .multilineTextAlignment(.center)
+                                            
+                                            Button(action: {
+                                                triggerHaptic(.impact(.light))
+                                                let current = extraScores[player.id] ?? 0
+                                                extraScores[player.id] = current + 1
+                                            }) {
+                                                Image(systemName: "plus")
+                                                    .font(.caption.bold())
+                                                    .foregroundColor(.scorePositive)
+                                                    .frame(width: 36, height: 36)
+                                                    .background(Color.scorePositive.opacity(0.12))
+                                                    .clipShape(Circle())
+                                            }
+                                            .buttonStyle(.plain)
+                                        }
+                                    }
                                     
-                                    HStack(spacing: 14) {
+                                    // Quick extra points buttons
+                                    HStack(spacing: 10) {
                                         Button(action: {
-                                            triggerHaptic(.impact(.light))
+                                            triggerHaptic(.impact(.medium))
                                             let current = extraScores[player.id] ?? 0
-                                            extraScores[player.id] = max(0, current - 1)
+                                            extraScores[player.id] = current + 3
                                         }) {
-                                            Image(systemName: "minus")
-                                                .font(.caption.bold())
-                                                .foregroundColor(.scoreNegative)
-                                                .frame(width: 36, height: 36)
-                                                .background(Color.scoreNegative.opacity(0.12))
-                                                .clipShape(Circle())
+                                            HStack(spacing: 4) {
+                                                Image(systemName: "plus.circle.fill")
+                                                    .font(.caption)
+                                                Text("Coppia (+3)")
+                                                    .font(.caption.bold())
+                                            }
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 8)
+                                            .background(Color.appAccent)
+                                            .cornerRadius(8)
                                         }
                                         .buttonStyle(.plain)
                                         
-                                        Text("\(extraScores[player.id] ?? 0)")
-                                            .font(.title3.bold())
-                                            .foregroundColor(.primary)
-                                            .frame(width: 30)
-                                            .multilineTextAlignment(.center)
-                                        
                                         Button(action: {
-                                            triggerHaptic(.impact(.light))
+                                            triggerHaptic(.impact(.medium))
                                             let current = extraScores[player.id] ?? 0
-                                            extraScores[player.id] = current + 1
+                                            extraScores[player.id] = current + 2
                                         }) {
-                                            Image(systemName: "plus")
-                                                .font(.caption.bold())
-                                                .foregroundColor(.scorePositive)
-                                                .frame(width: 36, height: 36)
-                                                .background(Color.scorePositive.opacity(0.12))
-                                                .clipShape(Circle())
+                                            HStack(spacing: 4) {
+                                                Image(systemName: "plus.circle.fill")
+                                                    .font(.caption)
+                                                Text("Meno di 9 (+2)")
+                                                    .font(.caption.bold())
+                                            }
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 8)
+                                            .background(Color.orange)
+                                            .cornerRadius(8)
                                         }
                                         .buttonStyle(.plain)
                                     }
+                                    .padding(.top, 2)
                                 }
-                                .padding(.vertical, 10)
+                                .padding(.vertical, 12)
+                                
                                 if player.id != game.players.last?.id {
                                     Divider().background(Color.cardStroke)
                                 }
@@ -894,6 +959,50 @@ struct CiccopaoloAddRoundSheet: View {
         return total
     }
     
+    private func playerButton(for player: CiccopaoloPlayer, selection: Binding<UUID?>, title: String) -> some View {
+        Button(action: {
+            triggerHaptic(.impact(.light))
+            if selection.wrappedValue == player.id {
+                selection.wrappedValue = nil
+            } else {
+                selection.wrappedValue = player.id
+            }
+            if title == "Primiera" {
+                primieraDetails = nil
+            }
+        }) {
+            Text(player.name)
+                .font(.caption.bold())
+                .foregroundColor(selection.wrappedValue == player.id ? .white : .secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .background(selection.wrappedValue == player.id ? Color.appAccent : Color.white.opacity(0.04))
+                .cornerRadius(8)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(selection.wrappedValue == player.id ? Color.appAccent : Color.cardStroke, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+    
+    private func nessunoButton(selection: Binding<UUID?>, title: String) -> some View {
+        Button(action: {
+            triggerHaptic(.impact(.light))
+            selection.wrappedValue = nil
+            if title == "Primiera" {
+                primieraDetails = nil
+            }
+        }) {
+            Text("Nessuno")
+                .font(.caption.bold())
+                .foregroundColor(selection.wrappedValue == nil ? .white : .secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .background(selection.wrappedValue == nil ? Color.secondary.opacity(0.3) : Color.white.opacity(0.04))
+                .cornerRadius(8)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(selection.wrappedValue == nil ? Color.secondary.opacity(0.4) : Color.cardStroke, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+    
     private func pointSelectorRow(title: String, selection: Binding<UUID?>, onHelpTap: (() -> Void)? = nil) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -924,49 +1033,22 @@ struct CiccopaoloAddRoundSheet: View {
                 }
             }
             
-            // Dynamic number of buttons for 2 or 3 players + Nessuno
             HStack(spacing: 8) {
-                ForEach(game.players) { player in
-                    Button(action: {
-                        triggerHaptic(.impact(.light))
-                        if selection.wrappedValue == player.id {
-                            selection.wrappedValue = nil
-                        } else {
-                            selection.wrappedValue = player.id
-                        }
-                        if title == "Primiera" {
-                            primieraDetails = nil
-                        }
-                    }) {
-                        Text(player.name)
-                            .font(.caption.bold())
-                            .foregroundColor(selection.wrappedValue == player.id ? .white : .secondary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
-                            .background(selection.wrappedValue == player.id ? Color.appAccent : Color.white.opacity(0.04))
-                            .cornerRadius(8)
-                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(selection.wrappedValue == player.id ? Color.appAccent : Color.cardStroke, lineWidth: 1))
+                if game.players.count == 2 {
+                    playerButton(for: game.players[0], selection: selection, title: title)
+                    nessunoButton(selection: selection, title: title)
+                    playerButton(for: game.players[1], selection: selection, title: title)
+                } else if game.players.count == 3 {
+                    playerButton(for: game.players[0], selection: selection, title: title)
+                    playerButton(for: game.players[1], selection: selection, title: title)
+                    nessunoButton(selection: selection, title: title)
+                    playerButton(for: game.players[2], selection: selection, title: title)
+                } else {
+                    ForEach(game.players) { player in
+                        playerButton(for: player, selection: selection, title: title)
                     }
-                    .buttonStyle(.plain)
+                    nessunoButton(selection: selection, title: title)
                 }
-                
-                Button(action: {
-                    triggerHaptic(.impact(.light))
-                    selection.wrappedValue = nil
-                    if title == "Primiera" {
-                        primieraDetails = nil
-                    }
-                }) {
-                    Text("Nessuno")
-                        .font(.caption.bold())
-                        .foregroundColor(selection.wrappedValue == nil ? .white : .secondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(selection.wrappedValue == nil ? Color.secondary.opacity(0.3) : Color.white.opacity(0.04))
-                        .cornerRadius(8)
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(selection.wrappedValue == nil ? Color.secondary.opacity(0.4) : Color.cardStroke, lineWidth: 1))
-                }
-                .buttonStyle(.plain)
             }
         }
     }

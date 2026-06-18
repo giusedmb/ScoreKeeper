@@ -498,7 +498,24 @@ public class GameStore {
         saveGameToHistory(participantIds: participantIds, rounds: historyRounds, gameTypeName: "Ciccopaolo")
     }
     
+    // MARK: - Ciccopaolo Swap Player Action
+    public func swapCiccopaoloPlayers(from index1: Int, to index2: Int) {
+        guard var game = ciccopaoloGame else { return }
+        guard index1 >= 0 && index1 < game.players.count else { return }
+        guard index2 >= 0 && index2 < game.players.count else { return }
+        game.players.swapAt(index1, index2)
+        self.ciccopaoloGame = game
+        saveAll()
+    }
+    
     // MARK: - Scopa Game Actions
+    public func swapScopaPlayers() {
+        guard var game = scopaGame, game.players.count == 2 else { return }
+        game.players.swapAt(0, 1)
+        self.scopaGame = game
+        saveAll()
+    }
+    
     public func startScopaGame(targetScore: Int, players: [Player]) {
         let scPlayers = players.map { ScopaPlayer(id: $0.id, name: $0.name) }
         self.scopaGame = ScopaGame(targetScore: targetScore, players: scPlayers, isActive: true)

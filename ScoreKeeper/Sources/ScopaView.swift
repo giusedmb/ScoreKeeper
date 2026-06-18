@@ -303,11 +303,30 @@ struct ScopaView: View {
                     }
                     .frame(maxWidth: .infinity)
                     
-                    // Divider
-                    Rectangle()
-                        .fill(Color.cardStroke)
-                        .frame(width: 1)
-                        .padding(.vertical, 10)
+                    // Divider with Swap Button
+                    ZStack {
+                        Rectangle()
+                            .fill(Color.cardStroke)
+                            .frame(width: 1)
+                            .padding(.vertical, 10)
+                        
+                        Button(action: {
+                            triggerHaptic(.impact(.light))
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                                store.swapScopaPlayers()
+                            }
+                        }) {
+                            Image(systemName: "arrow.left.and.right")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(.white)
+                                .padding(10)
+                                .background(Color.orange)
+                                .clipShape(Circle())
+                                .shadow(color: Color.black.opacity(0.3), radius: 3, x: 0, y: 2)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .frame(width: 44)
                     
                     // Player 2
                     VStack(spacing: 6) {
