@@ -297,6 +297,8 @@ public class GameStore {
         denariWinnerId: UUID?,
         scopeScores: [UUID: Int],
         extraScores: [UUID: Int],
+        coppiaScores: [UUID: Int] = [:],
+        menoDiNoveScores: [UUID: Int] = [:],
         primieraDetails: [UUID: [String: Int]]? = nil
     ) {
         guard var game = ciccopaoloGame else { return }
@@ -310,6 +312,8 @@ public class GameStore {
             denariWinnerId: denariWinnerId,
             scopeScores: scopeScores,
             extraScores: extraScores,
+            coppiaScores: coppiaScores,
+            menoDiNoveScores: menoDiNoveScores,
             primieraDetails: primieraDetails
         )
         

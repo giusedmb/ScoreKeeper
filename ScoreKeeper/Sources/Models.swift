@@ -118,6 +118,8 @@ public struct CiccopaoloRound: Codable, Identifiable, Hashable {
     // Extra points (scope, Napola/etc.)
     public var scopeScores: [UUID: Int] // Player.id -> count of scope
     public var extraScores: [UUID: Int] // Player.id -> count of extra points
+    public var coppiaScores: [UUID: Int] // Player.id -> count of "Coppia" declarations (each +3)
+    public var menoDiNoveScores: [UUID: Int] // Player.id -> count of "Meno di 9" declarations (each +2)
     
     // Detailed card selections for primiera
     public var primieraDetails: [UUID: [String: Int]]?
@@ -132,6 +134,8 @@ public struct CiccopaoloRound: Codable, Identifiable, Hashable {
         case mazzoWinnerId // For backwards compatibility
         case scopeScores
         case extraScores
+        case coppiaScores
+        case menoDiNoveScores
         case primieraDetails
     }
     
@@ -144,6 +148,8 @@ public struct CiccopaoloRound: Codable, Identifiable, Hashable {
         denariWinnerId: UUID? = nil,
         scopeScores: [UUID: Int] = [:],
         extraScores: [UUID: Int] = [:],
+        coppiaScores: [UUID: Int] = [:],
+        menoDiNoveScores: [UUID: Int] = [:],
         primieraDetails: [UUID: [String: Int]]? = nil
     ) {
         self.id = id
@@ -154,6 +160,8 @@ public struct CiccopaoloRound: Codable, Identifiable, Hashable {
         self.denariWinnerId = denariWinnerId
         self.scopeScores = scopeScores
         self.extraScores = extraScores
+        self.coppiaScores = coppiaScores
+        self.menoDiNoveScores = menoDiNoveScores
         self.primieraDetails = primieraDetails
     }
     
@@ -174,6 +182,8 @@ public struct CiccopaoloRound: Codable, Identifiable, Hashable {
         
         scopeScores = try container.decode([UUID: Int].self, forKey: .scopeScores)
         extraScores = try container.decode([UUID: Int].self, forKey: .extraScores)
+        coppiaScores = (try? container.decode([UUID: Int].self, forKey: .coppiaScores)) ?? [:]
+        menoDiNoveScores = (try? container.decode([UUID: Int].self, forKey: .menoDiNoveScores)) ?? [:]
         primieraDetails = try container.decodeIfPresent([UUID: [String: Int]].self, forKey: .primieraDetails)
     }
     
@@ -187,6 +197,8 @@ public struct CiccopaoloRound: Codable, Identifiable, Hashable {
         try container.encodeIfPresent(denariWinnerId, forKey: .denariWinnerId)
         try container.encode(scopeScores, forKey: .scopeScores)
         try container.encode(extraScores, forKey: .extraScores)
+        try container.encode(coppiaScores, forKey: .coppiaScores)
+        try container.encode(menoDiNoveScores, forKey: .menoDiNoveScores)
         try container.encodeIfPresent(primieraDetails, forKey: .primieraDetails)
     }
     
@@ -197,6 +209,8 @@ public struct CiccopaoloRound: Codable, Identifiable, Hashable {
         if carteWinnerId == id { total += 1 }
         if denariWinnerId == id { total += 1 }
         total += scopeScores[id] ?? 0
+        total += (coppiaScores[id] ?? 0) * 3
+        total += (menoDiNoveScores[id] ?? 0) * 2
         total += extraScores[id] ?? 0
         return total
     }

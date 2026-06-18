@@ -66,7 +66,7 @@ struct CiccopaoloView: View {
         .navigationTitle("Ciccopaolo")
         .sheet(isPresented: $showingAddRoundSheet) {
             if let game = store.ciccopaoloGame {
-                CiccopaoloAddRoundSheet(game: game) { primiera, settebello, carte, denari, scope, extra, details in
+                CiccopaoloAddRoundSheet(game: game) { primiera, settebello, carte, denari, scope, extra, coppia, menoDiNove, details in
                     // Call save round
                     store.saveCiccopaoloRound(
                         primieraWinnerId: primiera,
@@ -75,6 +75,8 @@ struct CiccopaoloView: View {
                         denariWinnerId: denari,
                         scopeScores: scope,
                         extraScores: extra,
+                        coppiaScores: coppia,
+                        menoDiNoveScores: menoDiNove,
                         primieraDetails: details
                     )
                     
@@ -551,15 +553,33 @@ struct CiccopaoloRoundHistoryRow: View {
                 let sc = round.scopeScores[player.id] ?? 0
                 return sc > 0 ? "\(player.name) (\(sc))" : nil
             }
+            let coppiaTexts = game.players.compactMap { player -> String? in
+                let cop = round.coppiaScores[player.id] ?? 0
+                return cop > 0 ? "\(player.name) (\(cop))" : nil
+            }
+            let menoDiNoveTexts = game.players.compactMap { player -> String? in
+                let m9 = round.menoDiNoveScores[player.id] ?? 0
+                return m9 > 0 ? "\(player.name) (\(m9))" : nil
+            }
             let extraTexts = game.players.compactMap { player -> String? in
                 let ex = round.extraScores[player.id] ?? 0
                 return ex > 0 ? "\(player.name) (+\(ex))" : nil
             }
             
-            if !scopeTexts.isEmpty || !extraTexts.isEmpty {
+            if !scopeTexts.isEmpty || !coppiaTexts.isEmpty || !menoDiNoveTexts.isEmpty || !extraTexts.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     if !scopeTexts.isEmpty {
                         Text("Scope: \(scopeTexts.joined(separator: " - "))")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    if !coppiaTexts.isEmpty {
+                        Text("Coppie: \(coppiaTexts.joined(separator: " - "))")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    if !menoDiNoveTexts.isEmpty {
+                        Text("Meno di 9: \(menoDiNoveTexts.joined(separator: " - "))")
                             .font(.caption2)
                             .foregroundColor(.secondary)
                     }
@@ -611,7 +631,7 @@ struct CiccopaoloAddRoundSheet: View {
     @Environment(\.dismiss) private var dismiss
     let game: CiccopaoloGame
     let roundToEdit: CiccopaoloRound?
-    let onSave: (UUID?, UUID?, UUID?, UUID?, [UUID: Int], [UUID: Int], [UUID: [String: Int]]?) -> Void
+    let onSave: (UUID?, UUID?, UUID?, UUID?, [UUID: Int], [UUID: Int], [UUID: Int], [UUID: Int], [UUID: [String: Int]]?) -> Void
     
     // Selections
     @State private var primieraWinnerId: UUID? = nil
@@ -622,13 +642,15 @@ struct CiccopaoloAddRoundSheet: View {
     // Scope and Extra
     @State private var scopeScores: [UUID: Int] = [:]
     @State private var extraScores: [UUID: Int] = [:]
+    @State private var coppiaScores: [UUID: Int] = [:]
+    @State private var menoDiNoveScores: [UUID: Int] = [:]
     
     // Primiera Details
     @State private var primieraDetails: [UUID: [String: Int]]? = nil
     
     @State private var showingPrimieraCalculator = false
     
-    init(game: CiccopaoloGame, roundToEdit: CiccopaoloRound? = nil, onSave: @escaping (UUID?, UUID?, UUID?, UUID?, [UUID: Int], [UUID: Int], [UUID: [String: Int]]?) -> Void) {
+    init(game: CiccopaoloGame, roundToEdit: CiccopaoloRound? = nil, onSave: @escaping (UUID?, UUID?, UUID?, UUID?, [UUID: Int], [UUID: Int], [UUID: Int], [UUID: Int], [UUID: [String: Int]]?) -> Void) {
         self.game = game
         self.roundToEdit = roundToEdit
         self.onSave = onSave
@@ -640,17 +662,25 @@ struct CiccopaoloAddRoundSheet: View {
             _denariWinnerId = State(initialValue: round.denariWinnerId)
             _scopeScores = State(initialValue: round.scopeScores)
             _extraScores = State(initialValue: round.extraScores)
+            _coppiaScores = State(initialValue: round.coppiaScores)
+            _menoDiNoveScores = State(initialValue: round.menoDiNoveScores)
             _primieraDetails = State(initialValue: round.primieraDetails)
         } else {
             // Initialize dictionaries
             var tempScopes: [UUID: Int] = [:]
             var tempExtras: [UUID: Int] = [:]
+            var tempCoppie: [UUID: Int] = [:]
+            var tempMenoDiNove: [UUID: Int] = [:]
             for p in game.players {
                 tempScopes[p.id] = 0
                 tempExtras[p.id] = 0
+                tempCoppie[p.id] = 0
+                tempMenoDiNove[p.id] = 0
             }
             _scopeScores = State(initialValue: tempScopes)
             _extraScores = State(initialValue: tempExtras)
+            _coppiaScores = State(initialValue: tempCoppie)
+            _menoDiNoveScores = State(initialValue: tempMenoDiNove)
             _primieraDetails = State(initialValue: nil)
         }
     }
@@ -801,45 +831,89 @@ struct CiccopaoloAddRoundSheet: View {
                                         }
                                     }
                                     
-                                    // Quick extra points buttons
+                                    // Declarations section (Coppia and Meno di 9)
                                     HStack(spacing: 10) {
-                                        Button(action: {
-                                            triggerHaptic(.impact(.medium))
-                                            let current = extraScores[player.id] ?? 0
-                                            extraScores[player.id] = current + 3
-                                        }) {
-                                            HStack(spacing: 4) {
-                                                Image(systemName: "plus.circle.fill")
-                                                    .font(.caption)
-                                                Text("Coppia (+3)")
+                                        // Coppia counter
+                                        HStack(spacing: 6) {
+                                            Text("Coppia (+3)")
+                                                .font(.caption.bold())
+                                                .foregroundColor(.white)
+                                            
+                                            HStack(spacing: 8) {
+                                                Button(action: {
+                                                    triggerHaptic(.impact(.light))
+                                                    let current = coppiaScores[player.id] ?? 0
+                                                    coppiaScores[player.id] = max(0, current - 1)
+                                                }) {
+                                                    Image(systemName: "minus.circle.fill")
+                                                        .font(.footnote)
+                                                        .foregroundColor(.white.opacity(0.7))
+                                                }
+                                                .buttonStyle(.plain)
+                                                
+                                                Text("\(coppiaScores[player.id] ?? 0)")
                                                     .font(.caption.bold())
+                                                    .foregroundColor(.white)
+                                                    .frame(width: 12)
+                                                    .multilineTextAlignment(.center)
+                                                
+                                                Button(action: {
+                                                    triggerHaptic(.impact(.medium))
+                                                    let current = coppiaScores[player.id] ?? 0
+                                                    coppiaScores[player.id] = current + 1
+                                                }) {
+                                                    Image(systemName: "plus.circle.fill")
+                                                        .font(.footnote)
+                                                        .foregroundColor(.white)
+                                                }
+                                                .buttonStyle(.plain)
                                             }
-                                            .foregroundColor(.white)
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 8)
-                                            .background(Color.appAccent)
-                                            .cornerRadius(8)
                                         }
-                                        .buttonStyle(.plain)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 8)
+                                        .background(Color.appAccent)
+                                        .cornerRadius(8)
                                         
-                                        Button(action: {
-                                            triggerHaptic(.impact(.medium))
-                                            let current = extraScores[player.id] ?? 0
-                                            extraScores[player.id] = current + 2
-                                        }) {
-                                            HStack(spacing: 4) {
-                                                Image(systemName: "plus.circle.fill")
-                                                    .font(.caption)
-                                                Text("Meno di 9 (+2)")
+                                        // Meno di 9 counter
+                                        HStack(spacing: 6) {
+                                            Text("Meno di 9 (+2)")
+                                                .font(.caption.bold())
+                                                .foregroundColor(.white)
+                                            
+                                            HStack(spacing: 8) {
+                                                Button(action: {
+                                                    triggerHaptic(.impact(.light))
+                                                    let current = menoDiNoveScores[player.id] ?? 0
+                                                    menoDiNoveScores[player.id] = max(0, current - 1)
+                                                }) {
+                                                    Image(systemName: "minus.circle.fill")
+                                                        .font(.footnote)
+                                                        .foregroundColor(.white.opacity(0.7))
+                                                }
+                                                .buttonStyle(.plain)
+                                                
+                                                Text("\(menoDiNoveScores[player.id] ?? 0)")
                                                     .font(.caption.bold())
+                                                    .foregroundColor(.white)
+                                                    .frame(width: 12)
+                                                    .multilineTextAlignment(.center)
+                                                
+                                                Button(action: {
+                                                    triggerHaptic(.impact(.medium))
+                                                    let current = menoDiNoveScores[player.id] ?? 0
+                                                    menoDiNoveScores[player.id] = current + 1
+                                                }) {
+                                                    Image(systemName: "plus.circle.fill")
+                                                        .font(.footnote)
+                                                        .foregroundColor(.white)
+                                                }
+                                                .buttonStyle(.plain)
                                             }
-                                            .foregroundColor(.white)
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 8)
-                                            .background(Color.orange)
-                                            .cornerRadius(8)
                                         }
-                                        .buttonStyle(.plain)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 8)
+                                        .background(Color.orange)
+                                        .cornerRadius(8)
                                     }
                                     .padding(.top, 2)
                                 }
@@ -904,6 +978,8 @@ struct CiccopaoloAddRoundSheet: View {
                             denariWinnerId,
                             scopeScores,
                             extraScores,
+                            coppiaScores,
+                            menoDiNoveScores,
                             primieraDetails
                         )
                         dismiss()
@@ -955,6 +1031,8 @@ struct CiccopaoloAddRoundSheet: View {
         if carteWinnerId == playerId { total += 1 }
         if denariWinnerId == playerId { total += 1 }
         total += scopeScores[playerId] ?? 0
+        total += (coppiaScores[playerId] ?? 0) * 3
+        total += (menoDiNoveScores[playerId] ?? 0) * 2
         total += extraScores[playerId] ?? 0
         return total
     }
@@ -1268,6 +1346,40 @@ struct CiccopaoloRoundDetailSheet: View {
                 }
                 .listRowBackground(Color.cardBackground)
                 
+                if game.players.contains(where: { (round.coppiaScores[$0.id] ?? 0) > 0 }) {
+                    Section {
+                        ForEach(game.players) { player in
+                            let cop = round.coppiaScores[player.id] ?? 0
+                            HStack {
+                                Text(player.name)
+                                Spacer()
+                                Text("\(cop) Coppie (+\(cop * 3) pt)")
+                                    .foregroundColor(cop > 0 ? .appAccent : .secondary)
+                            }
+                        }
+                    } header: {
+                        Text("Coppie")
+                    }
+                    .listRowBackground(Color.cardBackground)
+                }
+                
+                if game.players.contains(where: { (round.menoDiNoveScores[$0.id] ?? 0) > 0 }) {
+                    Section {
+                        ForEach(game.players) { player in
+                            let m9 = round.menoDiNoveScores[player.id] ?? 0
+                            HStack {
+                                Text(player.name)
+                                Spacer()
+                                Text("\(m9) Meno di 9 (+\(m9 * 2) pt)")
+                                    .foregroundColor(m9 > 0 ? .orange : .secondary)
+                            }
+                        }
+                    } header: {
+                        Text("Meno di 9")
+                    }
+                    .listRowBackground(Color.cardBackground)
+                }
+                
                 if game.players.contains(where: { (round.extraScores[$0.id] ?? 0) > 0 }) {
                     Section {
                         ForEach(game.players) { player in
@@ -1352,7 +1464,7 @@ struct CiccopaoloRoundDetailSheet: View {
                 }
             }
             .sheet(isPresented: $showingEditSheet) {
-                CiccopaoloAddRoundSheet(game: game, roundToEdit: round) { primiera, settebello, carte, denari, scope, extra, details in
+                CiccopaoloAddRoundSheet(game: game, roundToEdit: round) { primiera, settebello, carte, denari, scope, extra, coppia, menoDiNove, details in
                     let updated = CiccopaoloRound(
                         id: round.id,
                         roundNumber: round.roundNumber,
@@ -1362,6 +1474,8 @@ struct CiccopaoloRoundDetailSheet: View {
                         denariWinnerId: denari,
                         scopeScores: scope,
                         extraScores: extra,
+                        coppiaScores: coppia,
+                        menoDiNoveScores: menoDiNove,
                         primieraDetails: details
                     )
                     onUpdate(updated)
